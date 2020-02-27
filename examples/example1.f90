@@ -40,7 +40,9 @@ program example1
           ' | error = ', abs(zeros(j) - PI * (j - n/2 - 1) / 400)
   end do
 
-  deallocate(zeros)
+  if (n .gt. 0) then
+     deallocate(zeros)
+  end if
 
 end program example1
 

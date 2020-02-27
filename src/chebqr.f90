@@ -52,7 +52,7 @@ subroutine cqr_zeros(f, eps, zeros, n)
   ! This is set to true if double shift is enabled. As of now,
   ! root extraction is not yet implemented correctly for double
   ! shift, so this needs to be false. 
-  logical :: ds = .false.
+  logical :: ds = .true.
 
   ! Working variables for this routine
   double precision, allocatable :: rd(:), ru(:), rv(:), rbeta(:)
@@ -93,53 +93,23 @@ subroutine cqr_zeros(f, eps, zeros, n)
      call fastfastqr(n-1, d, beta, u, v, k)
   end if
 
-  ! FIXME: The following code does not work for the double shift
-  ! case, and should probably be reworked in a separate routine. 
-
-  ! Extract the eigenvalues which are in [-1, 1]. First we count
-  ! them and then allocate the array to store them
+  ! Count the number of real roots, and then actually extract them
   nroots = 0
-  do j = 1, n-1
-     if (ds) then
-        dr = rd(j)
-        di = 0.d0
-     else
-        dr = realpart(d(j))
-        di = imagpart(d(j))
-     end if
-     
-     if ( (dr .ge. -1.d0) .and. &
-          (dr .le.  1.d0) .and. &
-          abs(di) .le. 1.0d-12) then
-        nroots = nroots + 1
-     end if
-  end do
 
+  if (ds) then
+     call cqr_extract_roots_ds(n-1, rd, rbeta, ru, rv, zeros, nroots, eps)
+  else
+     call cqr_extract_roots(n-1, d, beta, u, v, zeros, nroots, eps)
+  end if
+  
   if (nroots .gt. 0) then
-     allocate(zeros(1:nroots))
-     nroots = 0
-     
-     do j = 1, n-1
-        if (ds) then
-           dr = rd(j)
-           di = 0.d0
-        else
-           dr = realpart(d(j))
-           di = imagpart(d(j))
-        end if
-        
-        if ( (dr .ge. -1.d0) .and. &
-             (dr .le.  1.d0) .and. &
-             abs(di) .le. 1.0d-12) then        
-           nroots = nroots + 1
-           
-           if (ds) then              
-              zeros(nroots) = rd(j)
-           else
-              zeros(nroots) = real(d(j))
-           end if
-        end if
-     end do     
+     allocate(zeros(nroots))
+
+     if (ds) then
+        call cqr_extract_roots_ds(n-1, rd, rbeta, ru, rv, zeros, nroots, eps)
+     else
+        call cqr_extract_roots(n-1, d, beta, u, v, zeros, nroots, eps)
+     end if
   end if
 
   n = nroots
@@ -156,6 +126,133 @@ subroutine cqr_zeros(f, eps, zeros, n)
   end if
      
 end subroutine cqr_zeros
+
+! Extract roots which are contained in [-1, 1], and real according
+! to the given precision.
+!
+! INPUT PARAMETERS:
+!
+!  N    INTEGER, number of computed eigenvalues.
+!
+!  D    COMPLEX(*), DIMENSION(N), diagonal entries of the symmetric
+!       part of the Schur form of the colleague matrix.
+!
+!  BETA COMPLEX(8), DIMENSION(N-1), subdiagonal entries of the symmetric
+!       part of the Schur form of the colleague matrix.
+!
+!  U    COMPLEX(8), DIMENSION(N), left low-rank factor of the rank-1 correction.
+!
+!  V    COMPLEX(8), DIMENSION(N), right low-rank factor of the rank-1 correction.
+!
+!  ZEROS DOUBLE PRECISION, DIMENSION(K), on output, this vector contains the real roots
+!       in the interval [-1, 1], according to the given precision tol. If the roots are
+!       more than K, then only the first K are stored.
+!
+!  K    INTEGER, on input the size of the vector ZEROS. On output, the total number of
+!       real roots inside [-1, 1], according to the given tolerance.
+!
+!  TOL  DOUBLE PRECISION, the tolerance used to determine if the complex roots are
+!       in fact perturbed real roots. 
+!
+subroutine cqr_extract_roots(n, d, beta, u, v, zeros, k, tol)
+  implicit none
+  
+  integer :: n, k, nroots, j
+  complex(8) :: d(n), beta(n-1), u(n), v(n)
+  double precision :: zeros(k), dr, di, tol
+
+  nroots = 0
+  do j = 1, n
+     dr = realpart(d(j))
+     di = imagpart(d(j))
+     
+     if ( (dr .ge. -1.d0) .and. &
+          (dr .le.  1.d0) .and. &
+          abs(di) .le. 1.0d-12) then
+        nroots = nroots + 1
+
+        if (nroots .le. k) then
+           zeros(nroots) = dr
+        end if
+     end if
+  end do
+
+  k = nroots;
+  
+end subroutine cqr_extract_roots
+
+! Extract roots which are contained in [-1, 1], and real according
+! to the given precision.
+!
+! INPUT PARAMETERS:
+!
+!  N    INTEGER, number of computed eigenvalues.
+!
+!  D    DOUBLE PRECISION, DIMENSION(N), diagonal entries of the symmetric
+!       part of the Schur form of the colleague matrix.
+!
+!  BETA DOUBLE PRECISION, DIMENSION(N-1), subdiagonal entries of the symmetric
+!       part of the Schur form of the colleague matrix.
+!
+!  U    DOUBLE PRECISION, DIMENSION(N), left low-rank factor of the rank-1 correction.
+!
+!  V    DOUBLE PRECISION, DIMENSION(N), right low-rank factor of the rank-1 correction.
+!
+!  ZEROS DOUBLE PRECISION, DIMENSION(K), on output, this vector contains the real roots
+!       in the interval [-1, 1], according to the given precision tol. If the roots are
+!       more than K, then only the first K are stored.
+!
+!  K    INTEGER, on input the size of the vector ZEROS. On output, the total number of
+!       real roots inside [-1, 1], according to the given tolerance.
+!
+!  TOL  DOUBLE PRECISION, the tolerance used to determine if the complex roots are
+!       in fact perturbed real roots. 
+!
+subroutine cqr_extract_roots_ds(n, d, beta, u, v, zeros, k, tol)
+  implicit none
+  
+  integer :: n, k, nroots, j, blk_sz
+  double precision :: d(n), beta(n-1), u(n), v(n)
+  double precision :: zeros(k), dr, di, tol
+
+  nroots = 0
+  j = 1
+
+  do while (j .le. n)
+     ! First, determine the size of the block: is it 1x1 or 2x2?
+     blk_sz = 1
+     if (j .lt. n) then
+        if (beta(j) .ne. 0.d0) then
+           blk_sz = 2
+        end if
+     end if
+
+     ! Read real and imaginary part of the eigenvalues
+     dr = d(j)
+
+     if (blk_sz .eq. 2) then
+        di = sqrt(-beta(j)*(beta(j)-u(j+1)*v(j)+v(j+1)*u(j)))
+     else
+        di = 0.d0
+     end if
+
+     if ( (dr .ge. -1.d0) .and. &
+          (dr .le.  1.d0) .and. &
+          abs(di) .le. 1.0d-12) then
+        nroots = nroots + blk_sz
+
+        if (nroots + blk_sz - 1 .le. k) then
+           zeros(nroots : nroots + blk_sz - 1) = dr
+        end if        
+     end if
+
+     j = j + blk_sz
+  end do
+
+  k = nroots;
+  
+end subroutine cqr_extract_roots_ds
+
 
 subroutine cqr_build_colleague_ds(n, coeffs, d, beta, u, v)
   implicit none

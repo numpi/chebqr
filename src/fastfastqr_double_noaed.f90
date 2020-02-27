@@ -54,7 +54,7 @@ end do
 do while (imax-imin .gt. 1)
 
 call cqr_fastqr6_ds_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
-print*, imax-imin+1
+! print*, imax-imin+1
 
 do while ((abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))).and. imin.le.imax).or. &
 abs(beta(imin+1))<eps*(abs(d(imin+1))+abs(d(imin+2))).and. imin+1.le.imax)
