@@ -370,16 +370,16 @@ subroutine cqr_interp(f, eps, coeffs, n)
      nrm = 0.d0
      
      do j = (n-1)/2, n
-        err = err + abs(coeffs(j))
+        err = max(err, abs(coeffs(j)))
      end do
      do j = 1, n
-        nrm = nrm + abs(coeffs(j))
+        nrm = max(nrm, abs(coeffs(j)))
      end do
      err = err / nrm    
 
      ! print *, 'Interpolation of degree =', n, ' error =', err, ' tol =', tol
 
-     if (err .le. tol) then
+     if (err .le. tol * dsqrt(1.d0 * n)) then
         exit
      end if
      
