@@ -1,4 +1,4 @@
-subroutine fastfastqr(n,d,beta,u,v,k)
+subroutine cqr_fastfastqr_ds(n,d,beta,u,v,k)
 implicit none
 integer, intent(in)  :: n,k
 real(8), dimension(n), intent(inout) :: d, u, v
@@ -6,14 +6,14 @@ real(8), dimension(n-1), intent(inout) :: beta
 
 
 !if(n.lt.350)then
-call fastqr6(n,d,beta,u,v)
+call cqr_fastqr6_ds(n,d,beta,u,v)
 !else
 !call aggressive_deflation(n,d,beta,u,v,k)
 !end if
-end subroutine
+end subroutine cqr_fastfastqr_ds
 
 !----------------------------------------------------
-recursive subroutine fastqr6(n,d,beta,u,v)
+recursive subroutine cqr_fastqr6_ds(n,d,beta,u,v)
 implicit none
 integer, intent(in)  :: n
 integer :: imin, imax ,cont,i
@@ -32,7 +32,7 @@ beta(imin)=0
 imin = imin + 1
 else
 beta(imin+1)=0
-call fastqr6_in(2, d(imin:imin+1), beta(imin:imin), u(imin:imin+1), v(imin:imin+1))
+call cqr_fastqr6_ds_in(2, d(imin:imin+1), beta(imin:imin), u(imin:imin+1), v(imin:imin+1))
 imin = imin + 2
 end if
 end do
@@ -46,14 +46,14 @@ beta(imax-1)=0
 imax = imax - 1
 else
 beta(imax-2)=0
-call fastqr6_in(2, d(imax-1:imax), beta(imax-1:imax-1), u(imax-1:imax), v(imax-1:imax))
+call cqr_fastqr6_ds_in(2, d(imax-1:imax), beta(imax-1:imax-1), u(imax-1:imax), v(imax-1:imax))
 imax = imax - 2
 end if
 end do
 
 do while (imax-imin .gt. 1)
 
-call fastqr6_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
+call cqr_fastqr6_ds_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
 print*, imax-imin+1
 
 do while ((abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))).and. imin.le.imax).or. &
@@ -66,7 +66,7 @@ imin = imin + 1
 cont=0
 else
 beta(imin+1)=0
-call fastqr6_in(2, d(imin:imin+1), beta(imin:imin), u(imin:imin+1), v(imin:imin+1))
+call cqr_fastqr6_ds_in(2, d(imin:imin+1), beta(imin:imin), u(imin:imin+1), v(imin:imin+1))
 imin = imin + 2
 cont=0
 end if
@@ -80,7 +80,7 @@ imax = imax - 1
 cont=0
 else
 beta(imax-2)=0
-call fastqr6_in(2, d(imax-1:imax), beta(imax-1:imax-1), u(imax-1:imax), v(imax-1:imax))
+call cqr_fastqr6_ds_in(2, d(imax-1:imax), beta(imax-1:imax-1), u(imax-1:imax), v(imax-1:imax))
 imax = imax - 2
 cont=0
 end if
@@ -90,14 +90,14 @@ do i=imin+1,imax-1
 if (abs(beta(i))<eps*(abs(d(i))+abs(d(i+1)))) then
 beta(i)=0
 if (i.le. (imax-imin)/2) then
-call fastqr6(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i))
+call cqr_fastqr6_ds(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i))
 do while (abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))).and. imin.le.imax)
 beta(imin)=0
 imin = imin + 1
 cont=0
 end do
 else
-call fastqr6(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax))
+call cqr_fastqr6_ds(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax))
 do while (abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))).and.imin.le.imax)
 beta(imax-1)=0
 imax = imax - 1
@@ -118,11 +118,11 @@ cont=cont+1
 !end if
 
 end do
-call fastqr6_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
+call cqr_fastqr6_ds_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
 
-end subroutine fastqr6
+end subroutine cqr_fastqr6_ds
 !------------------------------------
-subroutine fastqr6_in(n,d,beta,u,v)
+subroutine cqr_fastqr6_ds_in(n,d,beta,u,v)
 implicit none
 integer, intent(in)  :: n
 real(8), dimension(n), intent(inout) :: d, u,v
@@ -548,4 +548,4 @@ else if (n==2) then
 	call drot(1, v(1),1,v(2), 1, C, (S))	!e anche qui
 	
 endif
-end subroutine fastqr6_in
+end subroutine cqr_fastqr6_ds_in

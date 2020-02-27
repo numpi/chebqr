@@ -49,7 +49,13 @@ subroutine cqr_zeros(f, eps, zeros, n)
   double precision :: eps, dr, di
   double precision, allocatable :: zeros(:), coeffs(:)
 
+  ! This is set to true if double shift is enabled. As of now,
+  ! root extraction is not yet implemented correctly for double
+  ! shift, so this needs to be false. 
+  logical :: ds = .false.
+
   ! Working variables for this routine
+  double precision, allocatable :: rd(:), ru(:), rv(:), rbeta(:)
   complex(8), allocatable :: d(:), u(:), v(:), beta(:)
 
   interface
@@ -75,14 +81,88 @@ subroutine cqr_zeros(f, eps, zeros, n)
   ! the given function. This call allocates coeffs
   call cqr_interp(f, eps, coeffs, n)
 
-  !print *, 'n =', n
-  !do j = 1, n
-  !   print *, 'coeffs of deg', j-1, '=', coeffs(j)
-  !end do
-  
   ! Build the companion linearization in the Chebyshev basis
   ! and compute the eigenvalues.
-  allocate(u(1:n-1), v(1:n-1), d(1:n-1), beta(1:n-2))
+  if (ds) then
+     allocate(rd(n-1), rbeta(n-2), ru(n-1), rv(n-1))
+     call cqr_build_colleague_ds(n, coeffs, rd, rbeta, ru, rv)
+     call cqr_fastfastqr_ds(n-1, rd, rbeta, ru, rv, k)
+  else
+     allocate(u(1:n-1), v(1:n-1), d(1:n-1), beta(1:n-2))
+     call cqr_build_colleague(n, coeffs, d, beta, u, v)
+     call fastfastqr(n-1, d, beta, u, v, k)
+  end if
+
+  ! FIXME: The following code does not work for the double shift
+  ! case, and should probably be reworked in a separate routine. 
+
+  ! Extract the eigenvalues which are in [-1, 1]. First we count
+  ! them and then allocate the array to store them
+  nroots = 0
+  do j = 1, n-1
+     if (ds) then
+        dr = rd(j)
+        di = 0.d0
+     else
+        dr = realpart(d(j))
+        di = imagpart(d(j))
+     end if
+     
+     if ( (dr .ge. -1.d0) .and. &
+          (dr .le.  1.d0) .and. &
+          abs(di) .le. 1.0d-12) then
+        nroots = nroots + 1
+     end if
+  end do
+
+  if (nroots .gt. 0) then
+     allocate(zeros(1:nroots))
+     nroots = 0
+     
+     do j = 1, n-1
+        if (ds) then
+           dr = rd(j)
+           di = 0.d0
+        else
+           dr = realpart(d(j))
+           di = imagpart(d(j))
+        end if
+        
+        if ( (dr .ge. -1.d0) .and. &
+             (dr .le.  1.d0) .and. &
+             abs(di) .le. 1.0d-12) then        
+           nroots = nroots + 1
+           
+           if (ds) then              
+              zeros(nroots) = rd(j)
+           else
+              zeros(nroots) = real(d(j))
+           end if
+        end if
+     end do     
+  end if
+
+  n = nroots
+
+  ! sort the roots
+  call cqr_sort_array(n, zeros)
+
+  deallocate(coeffs)
+  
+  if (ds) then     
+     deallocate(rd,ru,rv,rbeta)
+  else
+     deallocate(d,u,v,beta)
+  end if
+     
+end subroutine cqr_zeros
+
+subroutine cqr_build_colleague_ds(n, coeffs, d, beta, u, v)
+  implicit none
+
+  integer :: n, j
+  double precision :: coeffs(n-1)
+  double precision :: d(n-1), u(n-1), v(n-1), beta(n-2)
 
   ! Build the rank 1 correction
   u = 0.d0
@@ -98,47 +178,31 @@ subroutine cqr_zeros(f, eps, zeros, n)
   d = 0.d0
   beta = .5d0
   beta(n-2) = 1.d0 / sqrt(2.d0)
+end subroutine cqr_build_colleague_ds
 
-  ! Compute the eigenvalues
-  call fastfastqr(n-1, d, beta, u, v, k)
+subroutine cqr_build_colleague(n, coeffs, d, beta, u, v)
+  implicit none
 
-  ! Extract the eigenvalues which are in [-1, 1]. First we count
-  ! them and then allocate the array to store them
-  nroots = 0
-  do j = 1, n-1
-     dr = realpart(d(j))
-     di = imagpart(d(j))
-     if ( (dr .ge. -1.d0) .and. &
-          (dr .le.  1.d0) .and. &
-          abs(di) .le. 1.0d-12) then
-        nroots = nroots + 1
-     end if
+  integer :: n, j
+  double precision :: coeffs(n-1)
+  complex(8) :: d(n-1), u(n-1), v(n-1), beta(n-2)
+
+  ! Build the rank 1 correction
+  u = 0.d0
+  u(1) = 1
+
+  do j = 1, n - 2
+     v(j) = -coeffs(n-j) / coeffs(n)
   end do
+  v(n-1) = -coeffs(1) / coeffs(n) * sqrt(2.d0)
+  v = v / 2
 
-  ! print *, 'nroots = ', nroots
-
-  if (nroots .gt. 0) then
-     allocate(zeros(1:nroots))
-     nroots = 0
-     do j = 1, n-1
-        dr = realpart(d(j))
-        di = imagpart(d(j))
-        if ( (dr .ge. -1.d0) .and. &
-             (dr .le.  1.d0) .and. &
-             abs(di) .le. 1.0d-12) then        
-           nroots = nroots + 1
-           zeros(nroots) = real(d(j))
-        end if
-     end do     
-  end if
-
-  n = nroots
-
-  ! sort the roots
-  call cqr_sort_array(n, zeros)
-
-  deallocate(d,u,v,beta,coeffs)  
-end subroutine cqr_zeros
+  ! ... and the symmetric part
+  d = 0.d0
+  beta = .5d0
+  beta(n-2) = 1.d0 / sqrt(2.d0)
+  
+end subroutine cqr_build_colleague
 
 ! Interpolate a given function f over [-1, 1] as a Chebyshev polynomial,
 ! with accuracy eps. 

@@ -10,4 +10,4 @@ all:
 
 clean:
 	make -C examples/ clean
-	make -C src/
+	make -C src/ clean
