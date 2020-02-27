@@ -1,6 +1,6 @@
 include ../make.inc
 
-all: example1 example2
+all: example1 example2 example3
 
 example%: example%.f90 ../src/libchebqr.so
 	$(FC) -o $@ $(FFLAGS) $< $(LIBS) -L../src/ -lchebqr '-Wl,-rpath=$$ORIGIN/../src'

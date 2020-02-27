@@ -98,7 +98,7 @@ subroutine cqr_zeros(f, eps, zeros, n)
   nroots = 0
 
   if (ds) then
-     call cqr_extract_roots_ds(n-1, rd, rbeta, ru, rv, zeros, nroots, eps)
+     call cqr_extract_roots_ds(n-1, rd, rbeta, ru, rv, zeros, nroots, eps, f)
   else
      call cqr_extract_roots(n-1, d, beta, u, v, zeros, nroots, eps)
   end if
@@ -107,7 +107,7 @@ subroutine cqr_zeros(f, eps, zeros, n)
      allocate(zeros(nroots))
 
      if (ds) then
-        call cqr_extract_roots_ds(n-1, rd, rbeta, ru, rv, zeros, nroots, eps)
+        call cqr_extract_roots_ds(n-1, rd, rbeta, ru, rv, zeros, nroots, eps, f)
      else
         call cqr_extract_roots(n-1, d, beta, u, v, zeros, nroots, eps)
      end if
@@ -209,12 +209,18 @@ end subroutine cqr_extract_roots
 !  TOL  DOUBLE PRECISION, the tolerance used to determine if the complex roots are
 !       in fact perturbed real roots. 
 !
-subroutine cqr_extract_roots_ds(n, d, beta, u, v, zeros, k, tol)
+subroutine cqr_extract_roots_ds(n, d, beta, u, v, zeros, k, tol, f)
   implicit none
   
   integer :: n, k, nroots, j, blk_sz
   double precision :: d(n), beta(n-1), u(n), v(n)
   double precision :: zeros(k), dr, di, tol
+
+  interface
+     function f(x)
+       double precision :: f, x
+     end function f
+  end interface       
 
   nroots = 0
   j = 1
@@ -237,17 +243,20 @@ subroutine cqr_extract_roots_ds(n, d, beta, u, v, zeros, k, tol)
         di = 0.d0
      end if
 
-     if ( (dr .ge. -1.d0) .and. &
-          (dr .le.  1.d0) .and. &
-          abs(di) .le. 1.0d-12) then
-        nroots = nroots + blk_sz
+     if ( (dr .ge. -1.d0) .and. (dr .le.  1.d0) ) then
+        ! For roots which have a complex part, we check first
+        ! if the evaluation of the function at the (real) point is small
+        if (blk_sz == 1 .or. abs(f(dr)) .lt. tol) then
+           nroots = nroots + blk_sz
 
-        if (nroots + blk_sz - 1 .le. k) then
-           zeros(nroots : nroots + blk_sz - 1) = dr
-        end if        
+           if (nroots .le. k) then
+              zeros(nroots - blk_sz + 1: nroots) = dr
+           end if
+        end if
      end if
-
+     
      j = j + blk_sz
+
   end do
 
   k = nroots;
