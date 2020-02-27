@@ -80,10 +80,7 @@ subroutine cqr_zeros(f, eps, zeros, n)
 
   ! Construct the Chebyshev interpolant on [-1, 1] for
   ! the given function. This call allocates coeffs
-  !call cpu_time(tstart)
   call cqr_interp(f, eps, coeffs, n)
-  !call cpu_time(tend)
-  ! print *, 'Interpolation time = ', tend - tstart
 
   ! Build the companion linearization in the Chebyshev basis
   ! and compute the eigenvalues.
@@ -315,7 +312,6 @@ subroutine cqr_interp(f, eps, coeffs, n)
   integer*8 :: plan
   complex(8), allocatable :: fvals(:), fvals_tmp(:)
   double precision, allocatable :: coeffs(:)
-  ! double precision, pointer :: coeffs_ptr(:)
   double precision :: PI = 4.0 * datan(1.d0)
   
   interface
@@ -429,7 +425,7 @@ subroutine cqr_interp2(n, fvals, c)
 
   allocate(fft_in(2*n-2), fft_out(2*n-2))
 
-  ! -1 and 0 are for FFTW_FORWARD and FFTW_ESTIMATE, respectively
+  ! -1 and 0 are for FFTW_FORWARD and FFTW_ESTIMATE, respectively.
   call fftw_f77_create_plan(plan, 2*n-2, -1, 0)
 
   do j = 1, n        
@@ -447,7 +443,7 @@ subroutine cqr_interp2(n, fvals, c)
   fft_out(2*n-2) = fft_out(2*n-2) / 2.d0
 
   c(1:n) = real(fft_out(1:n))
-  c(n) = c(n) / 2
+  c(n) = c(n) / 2.d0
 
   deallocate(fft_in, fft_out)
   
