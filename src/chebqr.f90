@@ -5,6 +5,43 @@
 !  Leonardo Robol <leonardo.robol@unipi.it>
 !
 
+!
+! SUBROUTINE CQR_ZEROS
+!
+! This subroutine takes as input a function handle and compute its
+! roots over [-1, 1], approximating it with a polynomial at accuracy
+! at least EPS.
+!
+! INPUT PARAMETERS:
+!
+!  F    Function that takes a DOUBLE PRECISION and returns the same type.
+!       The function needs to implement the following interface, which need
+!       to be included in the calling program to correctly pass the
+!       function handle:
+!
+!       interface
+!           function f(x)
+!               double precision :: f, x
+!           end function f
+!        end interface
+!
+!  EPS   DOUBLE PRECISION, must be positive real. It gives the accuracy
+!        at which F(X) should be approximated.
+!
+!  ZEROS DOUBLE_PRECISION, DIMENSION(:), ALLOCATABLE.
+!        This variable will be allocated as a vector of length N, and will
+!        contain the zeros of the given function in [-1, 1].
+!
+!  N     INTEGER
+!        This variable is set as output, and contains the size of the vector
+!        ZEROS, which is allocated by this function.
+!
+! Since this function allocates a vector, it needs to be called with an
+! interface, which for conveniente is provided in the chebqr.h file. 
+!
+! Hence, one may call the function by first including the file in the
+! subroutine of interest, using INCLUDE '/path/to/chebqr.h'.
+!
 subroutine cqr_zeros(f, eps, zeros, n)
   implicit none
   
