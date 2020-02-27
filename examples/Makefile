@@ -1,9 +1,9 @@
 include ../make.inc
 
-all: example1
+all: example1 example2
 
-example1: example1.f90 ../src/libchebqr.so
+example%: example%.f90 ../src/libchebqr.so
 	$(FC) -o $@ $(FFLAGS) $< $(LIBS) -L../src/ -lchebqr '-Wl,-rpath=$$ORIGIN/../src'
 
 clean:
-	rm -f example1
+	rm -f example1 example2

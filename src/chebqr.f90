@@ -57,6 +57,7 @@ subroutine cqr_zeros(f, eps, zeros, n)
   ! Working variables for this routine
   double precision, allocatable :: rd(:), ru(:), rv(:), rbeta(:)
   complex(8), allocatable :: d(:), u(:), v(:), beta(:)
+  double precision :: tstart, tend
 
   interface
      function f(x)
@@ -79,7 +80,10 @@ subroutine cqr_zeros(f, eps, zeros, n)
 
   ! Construct the Chebyshev interpolant on [-1, 1] for
   ! the given function. This call allocates coeffs
+  !call cpu_time(tstart)
   call cqr_interp(f, eps, coeffs, n)
+  !call cpu_time(tend)
+  ! print *, 'Interpolation time = ', tend - tstart
 
   ! Build the companion linearization in the Chebyshev basis
   ! and compute the eigenvalues.
@@ -356,9 +360,26 @@ subroutine cqr_interp(f, eps, coeffs, n)
         tol = max(tol, abs(fvals(j)) * eps)
         
         ! FIXME: Check the interpolation error at the new points
-        call cqr_clenshaw(n, coeffs, xx, yy)
-        err = max(err, abs(yy - fvals(j)))
+        !call cqr_clenshaw(n, coeffs, xx, yy)
+        !err = max(err, abs(yy - fvals(j)))
      end do
+
+     ! Interpolate a polynomial of higher degree
+     n = 2 * n - 1     
+     deallocate(coeffs); allocate(coeffs(n))
+
+     call cqr_interp2(n, fvals, coeffs)     
+
+     err = 0.d0
+     nrm = 0.d0
+     
+     do j = (n-1)/2, n
+        err = err + abs(coeffs(j))
+     end do
+     do j = 1, n
+        nrm = nrm + abs(coeffs(j))
+     end do
+     err = err / nrm    
 
      ! print *, 'Interpolation of degree =', n, ' error =', err, ' tol =', tol
 
@@ -366,11 +387,6 @@ subroutine cqr_interp(f, eps, coeffs, n)
         exit
      end if
      
-     ! Interpolate a polynomial of higher degree
-     n = 2 * n - 1     
-     deallocate(coeffs); allocate(coeffs(n))
-
-     call cqr_interp2(n, fvals, coeffs)     
   end do
 
   ! Make sure that the leading coefficient is not zero
@@ -413,10 +429,8 @@ subroutine cqr_interp2(n, fvals, c)
 
   allocate(fft_in(2*n-2), fft_out(2*n-2))
 
-  call dfftw_plan_dft_1d(plan, 2*n-2, fft_in, fft_out, &
-     -1, & ! -1: FFTW_FORWARD, 1 : FFTW_BACKWARD
-     0   & ! 0: FFTW_ESTIMATE, 1: FFTW_MEASURE
-  )
+  ! -1 and 0 are for FFTW_FORWARD and FFTW_ESTIMATE, respectively
+  call fftw_f77_create_plan(plan, 2*n-2, -1, 0)
 
   do j = 1, n        
      fft_in(n-j+1) = fvals(j)
@@ -425,14 +439,15 @@ subroutine cqr_interp2(n, fvals, c)
      end if
   end do
   
-  call dfftw_execute_dft(plan, fft_in, fft_out)
-  call dfftw_destroy_plan(plan)
+  call fftw_f77_one(plan, fft_in, fft_out)
+  call fftw_f77_destroy_plan(plan)
 
   fft_out = fft_out / (n-1)
   fft_out(1) = fft_out(1) / 2.d0
   fft_out(2*n-2) = fft_out(2*n-2) / 2.d0
 
   c(1:n) = real(fft_out(1:n))
+  c(n) = c(n) / 2
 
   deallocate(fft_in, fft_out)
   
@@ -450,14 +465,13 @@ subroutine cqr_clenshaw(n, coeffs, x, y)
      y = coeffs(1) + coeffs(2) * x
   else
      y1 = coeffs(n)
-     y2 = coeffs(n) * x
+     y2 = y1 * x + coeffs(n-1)
 
-     do j = n - 1, 2, -1
-        y = 2.d0 * x * y2 - y1 + coeffs(j) * x
-        y1 = y2 + coeffs(j)
+     do j = n - 2, 1, -1
+        y = 2.d0 * x * y2 - y1 + coeffs(j) - coeffs(j+1) * x
+        y1 = y2
         y2 = y
      end do
-     
   end if
   
 end subroutine cqr_clenshaw
