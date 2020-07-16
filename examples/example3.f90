@@ -7,7 +7,7 @@ function f(x)
   f = dsin(400 * x) - 1.d0;
 end function f
 
-program example2
+program example3
   implicit none
 
   integer j, n
@@ -45,5 +45,5 @@ program example2
      deallocate(zeros)
   end if
 
-end program example2
+end program example3
 
