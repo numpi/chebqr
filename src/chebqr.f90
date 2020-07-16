@@ -49,9 +49,7 @@ subroutine cqr_zeros(f, eps, zeros, n)
   double precision :: eps, dr, di
   double precision, allocatable :: zeros(:), coeffs(:)
 
-  ! This is set to true if double shift is enabled. As of now,
-  ! root extraction is not yet implemented correctly for double
-  ! shift, so this needs to be false. 
+  ! This is set to true if double shift is enabled.  
   logical :: ds = .true.
 
   ! Working variables for this routine

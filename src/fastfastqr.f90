@@ -144,7 +144,7 @@ if (n>k*3/2) then
 	beta(2)=R(3,2)
 
 	call zrot(1, u(1), 1, u(2), 1, C, S)
-	call zrot(1, v(1),1,v(2), 1, C, conjg(S))	
+	call zrot(1, v(1),1,v(2), 1, C, conjg(S))
 
 	d(1)=real(d(1)-u(1)*v(1))+(u(1)*v(1))
 	d(2)=real(d(2)-u(2)*v(2))+(u(2)*v(2))
