@@ -26,7 +26,7 @@ program example2
   
   call cqr_zeros(f, tol, zeros, n)
 
-  print '(A)', 'Function: sin(5*x) - 1 over [-1, 1]'
+  print '(A)', 'Function: sin(400*x) - 1 over [-1, 1]'
   print '(A, E8.3)', 'Approximation tolerance: ', tol
   print '(A, I4)', 'Number of expected roots: ', floor(2 * 400 / PI)
   print '(A, I4)', 'Number of identified roots in [-1, 1]:', n
