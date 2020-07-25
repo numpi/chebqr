@@ -525,7 +525,7 @@ allocate(hatd(i))
 ! Store the non deflated eigenvalues of the kxk trailing principal submatrix.
 hatd=d(1+n-K:i+n-K)
 ! Bring back the matrix in Hessenberg form.
-   call Hessenberg_piena(i,h(1:i),d(1+n-K:i+n-K),beta(n-K+1:n-K+i-1),u(1+n-K:i+n-K),v(1+n-K:i+n-K))
+   call Hessenberg_reduction(i,h(1:i),d(1+n-K:i+n-K),beta(n-K+1:n-K+i-1),u(1+n-K:i+n-K),v(1+n-K:i+n-K))
 	beta(n-K)=h(1)
    if (i< w) then
     ! The stored eigenvalues are not enough to produce w shifts, hence perform
@@ -548,53 +548,149 @@ end if
 end subroutine aggressive_deflation_in
 !--------------------------------------------------
 
-! EVITO DI COMMENTARLA, PROBABILMENTE ANDRÀ SOSTITUITA.
+!SUBROUTINE Hessenberg_reduction
+!
+! This subroutine takes in input an arbitrary vector and the structured
+! representation of a triangular matrix that is the sum of a Hermitian
+! and a rank one matrix. The subroutine annihilates all the components 
+! of the arbitrary vector, except the first, by means of Givens rotations.
+! Moreover the subroutine recuces in Hessenberg form the triangular matrix 
+! transformed by similarity with the Givens rotations used before.
+!
+! INPUT PARAMETERS
+!
+! N    INTEGER. Size of the input matrix. 
+!
+! H    COMPLEX(8), DIMENSION(N). Arbitrary vector.
+!
+! D    COMPLEX(8), DIMENSION(N). Vector that contains the diagonal entries
+!      of the matrix.
+!
+! BETA COMPLEX(8), DIMENSION(N-1). Vector that contains the subdiagonal 
+!      entries of the matrix.
+!
+! U,V  COMPLEX(8), DIMENSION(N). Vectors such that the rank one part of 
+!      the matrix is UV*.
 
-subroutine Hessenberg_piena(n,h,d,beta,u,v) 
+
+
+subroutine Hessenberg_reduction(n,h,d,beta,u,v) 
 implicit none
 integer, intent(in)  :: n
 complex(8), dimension(n), intent(inout) :: d, u,v
 complex(8), dimension(n-1), intent(out) :: beta
 complex(8), dimension(n), intent(inout) :: h
+complex(8), dimension(3,2) :: R
 integer :: i,j,p
-complex(8), dimension(n,n) :: T
 complex(8) :: C,S
 complex(8), dimension(2,2) :: G
-complex(8) :: z
-
+complex(8) :: z,gamm
 if (n>1) then
-	T=0
-	do i=1,n
-	   T(i,i)=d(i)	
-	   do j=i+1,n
-	   	T(i,j)=u(i)*v(j)-conjg(u(j)*v(i))
-	   end do
-	end do
-do i=n-1,1,-1
-	call zrotg(h(i),h(i+1),C,S)
+! Annihilate the last component of the arbitrary vector.
+z=h(n-1)
+call zrotg(z,h(n),C,S)
+h(n-1)=z
+h(n)=0
+! Transform the triangular matrix by means the previous 
+! Givens rotation.
+gamm=conjg(-v(n-1)*u(n))+u(n-1)*v(n)
+R(1,1)=d(n-1)
+R(2,2)=d(n)
+R(1,2)=gamm
+R(2,1)=0
+R(3,1)=0
+R(3,2)=0
+call zrot(2, R(1,1), 3, R(2,1), 3, C, S)
+call zrot(2, R(1,1), 1, R(1,2), 1, C, conjg(S))
+call zrot(1, u(n-1), 1, u(n), 1, C, S)
+call zrot(1, v(n-1), 1, v(n), 1, C, conjg(S))
+d(n-1)=R(1,1)
+d(n)=R(2,2)
+beta(n-1)=R(2,1)
+do i=n-2,1,-1
+! Annihilate the last nonzero entry of the arbitrary vector.
+	z=h(i)
+	call zrotg(z,h(i+1),C,S)
+	h(i)=z
 	h(i+1)=0
-	call zrot(n-i+1, T(i,i), n, T(i+1,i), n, C, S)
-	call zrot(n, T(1,i), 1, T(1,i+1), 1, C, conjg(S))
+	! Transform the triangular matrix by means the previous 
+	! Givens rotation.
+	gamm=conjg(-v(i)*u(i+1))+u(i)*v(i+1)
+	R(1,1)=d(i)
+	R(2,2)=d(i+1)
+	R(1,2)=gamm
+	R(2,1)=0
+	R(3,1)=0
+	R(3,2)=beta(i+1)
+	call zrot(2, R(1,1), 3, R(2,1), 3, C, S)
+	call zrot(3, R(1,1), 1, R(1,2), 1, C, conjg(S))
 	call zrot(1, u(i), 1, u(i+1), 1, C, S)
-	call zrot(1, v(i), 1, v(i+1), 1, C, conjg(S))	
+	call zrot(1, v(i), 1, v(i+1), 1, C, conjg(S))
+	d(i)=R(1,1)
+	d(i+1)=R(2,2)
+	beta(i)=R(2,1)
+	beta(i+1)=R(3,2)
+		
+	! Chase the bulge to bring back the matrix in Hessenberg form.
+	do j=i,n-3
+
+    		gamm=conjg(beta(j+1)-v(j+1)*u(j+2))+u(j+1)*v(j+2)
+		z=beta(j)
+
+	    	call zrotg(z,R(3,1),C,S)
+	
+    		beta(j)=z
+		R(1,1)=d(j+1)
+		R(2,1)=beta(j+1)
+		R(1,2)=gamm
+		R(2,2)=d(j+2)
+    		R(3,1)=0
+		R(3,2)=beta(j+2)
+	
+	
+		call zrot(2, R(1,1), 3, R(2,1), 3, C, S)
+		call zrot(3, R(1,1), 1, R(1,2), 1, C, conjg(S))
+	
+	
+    		d(j+1)=R(1,1)
+    		beta(j+1)=R(2,1)
+    		d(j+2)=R(2,2)
+   		beta(j+2)=R(3,2)
+	
+		call zrot(1, u(j+1), 1, u(j+2), 1, C, S)
+		call zrot(1, v(j+1),1,v(j+2), 1, C, conjg(S))
+	end do
+	
+    	gamm=conjg(beta(n-1)-v(n-1)*u(n))+u(n-1)*v(n);
+	z=beta(n-2)
+	call zrotg(z,R(3,1),C,S)
+	beta(n-2)=z
+	R(1,1)=d(n-1)
+	R(2,1)=beta(n-1)
+	R(1,2)=gamm
+	R(2,2)=d(n)
+
+
+	call zrot(2, R(1,1), 3, R(2,1), 3, C, S)
+	call zrot(2, R(1,1), 1, R(1,2), 1, C, conjg(S))
+	
+
+
+    	d(n-1)=R(1,1)
+    	beta(n-1)=R(2,1)
+    	d(n)=R(2,2)
+
+  	
+
+	call zrot(1, u(n-1), 1, u(n), 1, C, S)
+	call zrot(1, v(n-1),1,v(n), 1, C, conjg(S))	
+
+	d(n-1)=real(d(n-1)-u(n-1)*v(n-1))+(u(n-1)*v(n-1))
+    	d(n)=real(d(n)-u(n)*v(n))+(u(n)*v(n))
+    	
 end do
-do i=1,n-2
-	do j=n-1,i+1,-1
-	call zrotg(T(j,i),T(j+1,i),C,S)
-	T(j+1,i)=0
-	call zrot(n-i, T(j,i+1), n, T(j+1,i+1), n, C, S)
-	call zrot(n, T(1,j), 1, T(1,j+1), 1, C, conjg(S))
-	call zrot(1, u(j), 1, u(j+1), 1, C, S)
-	call zrot(1, v(j), 1, v(j+1), 1, C, conjg(S))
-    end do
-end do
-do i=1,n-1
-d(i)=T(i,i)
-beta(i)=T(i+1,i)
-end do
-d(n)=T(n,n)
 end if
-end subroutine Hessenberg_piena
+end subroutine Hessenberg_reduction
 !---------------------------------------------------------
 !SUBROUTINE fastqr11
 !
@@ -1018,9 +1114,9 @@ if (n>2) then
 
 	do i=1,n-3
 
-	if(abs(R(3,1))<eps*(abs(beta(i)))) then
-	R(3,1)=0
-	end if
+	!if(abs(R(3,1))<eps*(abs(beta(i)))) then
+	!R(3,1)=0
+	!end if
 
     	gamm(i+1)=conjg(beta(i+1)-v(i+1)*u(i+2))+u(i+1)*v(i+2)
 	z=beta(i)
