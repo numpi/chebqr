@@ -130,7 +130,7 @@ do while (imax-imin .ge. 350)
 		! Perform k steps of the structured QR algorithm using
                 ! k shifts that are given as input, and return a shift vector of size k.
 		! If the size of the martix is large enough perform it in parallel. 
-	if (imax-imin .ge. 500) then
+	if (imax-imin .ge. 5) then
 		call fastqr10_in_par(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),rho,k,np)
 	else	
 		call fastqr10_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),rho,k)
@@ -157,7 +157,7 @@ do while (imax-imin .ge. 350)
 		! Perform k seps of the structured QR algorithm using
                 ! k shifts that are given as input, and return a shift vector of size k.
 		 ! If the size of the martix is large enough perform it in parallel. 
-		if (imax-imin .ge. 500) then
+		if (imax-imin .ge. 5) then
 			call fastqr10_in_par(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),rho,k,np)
 		else	
 			call fastqr10_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),rho,k)
@@ -394,7 +394,7 @@ if (n>k*3/2) then
 		bulge(p)=R(3,1)
 	
 		!$OMP PARALLEL DO
-		do q=1,p !QUESTO SI PARALLELIZZA
+		do q=1,p 
 			qq(q)=(p-q)*(siz-1)
 			call chasing(siz-1, d(qq(q)+2:qq(q)+siz), beta(qq(q)+1:qq(q)+siz), u(qq(q)+2:qq(q)+siz), v(qq(q)+2:qq(q)+siz),bulge(q))
 		end do
@@ -434,20 +434,14 @@ if (n>k*3/2) then
 
 	bulge(p)=R(3,1)
 
-	!i=(np-p)*(siz-1)+1
-	!call chasing(i,d(2:i+1),beta(1:i+1),u(2:i+1),v(2:i+1),bulge(p))
-	!end do
 	do iii=1,1-np+(n-2)/(siz-1)-5
-!iii=1
+
         !$OMP PARALLEL DO
-	do p=1,np !QUESTO SI PARALLELIZZA
-!call cpu_time(t1(p))
+	do p=1,np
 	qq(p) = (np-p+iii-1)*(siz-1)
 	call chasing(siz-1, d(qq(p)+2:qq(p)+siz), beta(qq(p)+1:qq(p)+siz), u(qq(p)+2:qq(p)+siz), v(qq(p)+2:qq(p)+siz),bulge(p))
-!call cpu_time(t2(p))
 	end do
         !$OMP END PARALLEL DO
-!print*,'Time Taken -->', real(t2-t1)
 	do p=1,np
 	qq(p)=(np-p+iii-1)*(siz-1)
 	call chasing(2,d(qq(p)+siz:qq(p)+siz+1),beta(qq(p)+siz-1:qq(p)+siz+1),u(qq(p)+siz:qq(p)+siz+1),v(qq(p)+siz:qq(p)+siz+1),bulge(p))
@@ -484,7 +478,7 @@ if (n>k*3/2) then
 
 	
 	!$OMP PARALLEL DO
-	do p=q+1,np !QUESTO SI PARALLELIZZA
+	do p=q+1,np 
 	qq(p)=(np-p+q+iii-1)*(siz-1)
 	call chasing(siz-1, d(qq(p)+2:qq(p)+siz), beta(qq(p)+1:qq(p)+siz), u(qq(p)+2:qq(p)+siz), v(qq(p)+2:qq(p)+siz),bulge(p-q+1))
 	end do
@@ -511,6 +505,26 @@ else
 end if
 end subroutine fastqr10_in_par
 !------------------------------------------------------
+!SUBROUTINE chasing
+!
+! This subroutine performs a structured bulge chasing.
+! INPUT PARAMETERS
+!
+! N    INTEGER. Size of the input matrix 
+!
+! D    COMPLEX(8), DIMENSION(N). Vector that contains the diagonal entries
+!      of the matrix.
+!
+! BETA COMPLEX(8), DIMENSION(N-1). Vector that contains the subdiagonal 
+!      entries of the matrix.
+!
+! U,V  COMPLEX(8), DIMENSION(N). Vectors such that the rank one part of 
+!      the matrix is UV*.
+!
+! BULGE   COMPLEX(8). Value of the bluge.
+
+
+
 subroutine chasing(n,d,beta,u,v,bulge)
 implicit none
 integer, intent(in)  :: n

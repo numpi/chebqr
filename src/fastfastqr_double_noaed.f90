@@ -1,19 +1,26 @@
-subroutine cqr_fastfastqr_ds(n,d,beta,u,v,k)
-implicit none
-integer, intent(in)  :: n,k
-real(8), dimension(n), intent(inout) :: d, u, v
-real(8), dimension(n-1), intent(inout) :: beta
-
-
-!if(n.lt.350)then
-call cqr_fastqr6_ds(n,d,beta,u,v)
-!else
-!call aggressive_deflation(n,d,beta,u,v,k)
-!end if
-end subroutine cqr_fastfastqr_ds
 
 !----------------------------------------------------
-recursive subroutine cqr_fastqr6_ds(n,d,beta,u,v)
+
+!SUBROUTINE cqr_fastfastqr_ds
+!
+! This subroutine performs a double shift structured QR algorithm, without 
+! aggressive early deflation, to compute the eigenvalue of a matrix which is
+! the sum of a hermitian and a rank one matrix.  
+!
+! INPUT PARAMETERS
+!
+! N    INTEGER. Size of the input matrix. 
+!
+! D    COMPLEX(8), DIMENSION(N). Vector that contains the diagonal entries
+!      of the matrix.
+!
+! BETA COMPLEX(8), DIMENSION(N-1). Vector that contains the subdiagonal 
+!      entries of the matrix.
+!
+! U,V  COMPLEX(8), DIMENSION(N). Vectors such that the rank one part of 
+!      the matrix is UV*.
+
+recursive subroutine cqr_fastfastqr_ds(n,d,beta,u,v)
 implicit none
 integer, intent(in)  :: n
 integer :: imin, imax ,cont,i
@@ -24,6 +31,8 @@ real(8) :: eps = 2.22e-16
 imax=n
 imin=1 
 cont=0
+
+!Try to deflate some eigenvalue
 do while ((abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))).and. imin.le.imax).or. &
 abs(beta(imin+1))<eps*(abs(d(imin+1))+abs(d(imin+2))).and. imin+1.le.imax)
 
@@ -53,9 +62,10 @@ end do
 
 do while (imax-imin .gt. 1)
 
+! Compute a step of the double shuft QR algorithm.
 call cqr_fastqr6_ds_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
-! print*, imax-imin+1
 
+!Try to deflate some eigenvalue
 do while ((abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))).and. imin.le.imax).or. &
 abs(beta(imin+1))<eps*(abs(d(imin+1))+abs(d(imin+2))).and. imin+1.le.imax)
 
@@ -87,17 +97,20 @@ end if
 end do
 
 do i=imin+1,imax-1
+! If a deflation occurs in the middle of the matrix, 
+! compute the eigenvalues of the smallest diagonal block, 
+! using a recursive structured QR algorithm. 
 if (abs(beta(i))<eps*(abs(d(i))+abs(d(i+1)))) then
 beta(i)=0
 if (i.le. (imax-imin)/2) then
-call cqr_fastqr6_ds(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i))
+call cqr_fastfastqr_ds(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i))
 do while (abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))).and. imin.le.imax)
 beta(imin)=0
 imin = imin + 1
 cont=0
 end do
 else
-call cqr_fastqr6_ds(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax))
+call cqr_fastfastqr_ds(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax))
 do while (abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))).and.imin.le.imax)
 beta(imax-1)=0
 imax = imax - 1
@@ -107,21 +120,38 @@ end if
 end if
 end do
 
-
-
-
 cont=cont+1
-!if (cont==10) then
-! call fastqr7_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
-!cont=0
-!print*, 'cont=',cont
-!end if
+! If after some QR iteration there is not delation, perform a structured
+! QR step using a random shift vector.
+if (cont==10) then
+ call fastqr7_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
+cont=0
+end if
 
 end do
 call cqr_fastqr6_ds_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
 
-end subroutine cqr_fastqr6_ds
+end subroutine cqr_fastfastqr_ds
 !------------------------------------
+!SUBROUTINE cqr_fastqr6_ds_in
+!
+! This subroutine performs a step of the double shift structured QR algorithm, 
+! to compute the eigenvalue of a matrix which is the sum of a hermitian and a 
+! rank one matrix.  
+!
+! INPUT PARAMETERS
+!
+! N    INTEGER. Size of the input matrix. 
+!
+! D    COMPLEX(8), DIMENSION(N). Vector that contains the diagonal entries
+!      of the matrix.
+!
+! BETA COMPLEX(8), DIMENSION(N-1). Vector that contains the subdiagonal 
+!      entries of the matrix.
+!
+! U,V  COMPLEX(8), DIMENSION(N). Vectors such that the rank one part of 
+!      the matrix is UV*.
+
 subroutine cqr_fastqr6_ds_in(n,d,beta,u,v)
 implicit none
 integer, intent(in)  :: n
@@ -549,3 +579,145 @@ else if (n==2) then
 	
 endif
 end subroutine cqr_fastqr6_ds_in
+
+!-----------------------------------------------------------
+
+!SUBROUTINE fastqr7_in
+!
+! This subroutine performs a step of the single shift structured QR algorithm, 
+! to compute the eigenvalue of a matrix which is the sum of a hermitian and a 
+! rank one matrix. The peculiarity of this subroutine is to use a random number
+! as shift.
+!
+! INPUT PARAMETERS
+!
+! N    INTEGER. Size of the input matrix. 
+!
+! D    COMPLEX(8), DIMENSION(N). Vector that contains the diagonal entries
+!      of the matrix.
+!
+! BETA COMPLEX(8), DIMENSION(N-1). Vector that contains the subdiagonal 
+!      entries of the matrix.
+!
+! U,V  COMPLEX(8), DIMENSION(N). Vectors such that the rank one part of 
+!      the matrix is UV*.
+
+subroutine fastqr7_in(n,d,beta,u,v)
+
+implicit none
+integer, intent(in)  :: n
+real(8), dimension(n), intent(inout) :: d, u,v
+real(8), dimension(n-1), intent(inout) :: beta
+real(8), dimension(n-1) :: gamm
+real(8), dimension(n-2) :: alph
+real(8), dimension(2) :: l
+real(8) :: rho
+real(8), dimension(4,3) :: R
+real(8), dimension(2,2) :: A
+integer :: i
+real(8) :: S, C, ss, cc, r1,i1,r2,i2
+real(8):: z,zz,z2,zz2
+real(8):: eps = 2.22e-16
+
+
+if (n>2) then
+	gamm(1)=(beta(1)-v(1)*u(2))+u(1)*v(2)
+	! Compute a random shift.
+	call random_number(rho)
+
+	! Perform the structured QR step.
+	z=d(1)-rho
+	z2=beta(1)
+	call drotg(z,z2,C,S)
+
+	
+	R(1,1)=d(1)
+	R(2,1)=beta(1)
+	R(1,2)=gamm(1)
+	R(2,2)=d(2)
+	R(3,1)=0
+	R(3,2)=beta(2)
+	R(4,:)=0
+	R(:,3)=0
+	
+	call drot(2, R(1,1), 4, R(2,1), 4, C, S)
+	call drot(3, R(1,1), 1, R(1,2), 1, C, (S))
+
+	d(1)=R(1,1)
+	beta(1)=R(2,1)
+	d(2)=R(2,2)
+	beta(2)=R(3,2)
+
+	call drot(1, u(1), 1, u(2), 1, C, S)
+	call drot(1, v(1),1,v(2), 1, C, (S))	
+
+	
+	do i=1,n-3
+
+
+    	gamm(i+1)=(beta(i+1)-v(i+1)*u(i+2))+u(i+1)*v(i+2)
+	z=beta(i)
+	z2=R(3,1)
+
+    	call drotg(z,z2,C,S)
+    	call drot(1, beta(i), 1, R(3,1), 1, C, S)
+
+
+	R(1,1)=d(i+1)
+	R(2,1)=beta(i+1)
+	R(1,2)=gamm(i+1)
+	R(2,2)=d(i+2)
+    	R(3,1)=0
+	R(3,2)=beta(i+2)
+
+
+	call drot(2, R(1,1), 4, R(2,1), 4, C, S)
+	call drot(3, R(1,1), 1, R(1,2), 1, C, (S))
+
+
+    	d(i+1)=R(1,1)
+    	beta(i+1)=R(2,1)
+    	d(i+2)=R(2,2)
+   	beta(i+2)=R(3,2)
+	
+	call drot(1, u(i+1), 1, u(i+2), 1, C, S)
+	call drot(1, v(i+1),1,v(i+2), 1, C, (S))
+	enddo
+    	gamm(n-1)=(beta(n-1)-v(n-1)*u(n))+u(n-1)*v(n);
+	z=beta(n-2)
+	z2=R(3,1)
+	call drotg(z,z2,C,S)
+    	call drot(1, beta(n-2), 1, R(3,1), 1, C, S)
+
+	beta(n-2)=z
+	R(1,1)=d(n-1)
+	R(2,1)=beta(n-1)
+	R(1,2)=gamm(n-1)
+	R(2,2)=d(n)
+
+
+	call drot(2, R(1,1), 4, R(2,1), 4, C, S)
+	call drot(2, R(1,1), 1, R(1,2), 1, C, (S))
+	
+
+
+    	d(n-1)=R(1,1)
+    	beta(n-1)=R(2,1)
+    	d(n)=R(2,2)
+
+  	
+
+	call drot(1, u(n-1), 1, u(n), 1, C, S)
+	call drot(1, v(n-1),1,v(n), 1, C, (S))
+
+
+
+else if (n==2) then 
+	gamm(1)=(beta(1)-u(2)*v(1))+u(1)*v(2)
+
+	call DLANV2(d(1),gamm(1),beta(1),d(2), r1,i1,r2,i2,C,S)
+	call drot(1, u(1), 1, u(2), 1, C, S) !forse qui va -S
+	call drot(1, v(1),1,v(2), 1, C, (S))	!e anche qui
+	
+endif
+end subroutine fastqr7_in
