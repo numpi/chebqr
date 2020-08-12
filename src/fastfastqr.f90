@@ -1,4 +1,3 @@
-
 !-------------------------------------
 !SUBROUTINE fastfastqr
 !
@@ -79,6 +78,11 @@ real(8):: z
 imax=n
 imin=1 
 cont=0
+
+if (imin .ge. imax) then
+   return
+end if
+
 ! Compute the first shift vector, of size 2, using the Wilkinson shift.
 rhorho(2)=sqrt((d(n-1)+d(n))**2-4*(d(n-1)*d(n)-beta(n-1)*conjg(beta(n-1)-u(n)*v(n-1))+u(n-1)*v(n)))
 rhorho(1)=(d(n-1)+d(n)+rhorho(2))/2
@@ -87,12 +91,12 @@ rhorho(2)=(d(n-1)+d(n)-rhorho(2))/2
 ! 2 shifts that are given as input, and return a shift vector of size k.
 call fastqr12_in(n,d,beta,u,v,rhorho,k,rho)
 ! Try to do some deflation.
-do while (abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))).and. imin.le.imax)
+do while (imin .lt. imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
 	beta(imin)=0
 	imin = imin + 1
 	cont=0
 end do
-do while (beta(imax-1)==0 .and. imin .le. imax)
+do while (imax .gt. 1 .and. beta(imax-1)==0)
 	imax = imax - 1
 	cont=0
 end do
@@ -156,7 +160,10 @@ do while (imax-imin .ge. 350)
 end do
 ! When the size of the matrix becames small, perform a structured QR algorithm
 ! without aggressive early deflation.
-call fastqr6(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
+if (imax .gt. imin) then
+   call fastqr6(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
+end if
+
 end subroutine aggressive_deflation
 
 !----------------------------------------------------
@@ -974,30 +981,33 @@ imin=1
 cont=0
 
 !Try to deflate some eigenvalue
-do while (abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))).and. imin.le.imax)
-beta(imin)=0
-imin = imin + 1
+do while (imin .lt. imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
+   beta(imin)=0
+   imin = imin + 1
 end do
-do while (abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))).and.imin.le.imax)
-beta(imax-1)=0
-imax = imax - 1
+
+do while (imin .lt. imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
+   beta(imax-1)=0
+   imax = imax - 1
 end do
-do while (imax-imin .gt. 0)
+
+do while (imax - imin .gt. 0)
 
 
 ! Compute a step of the QR algorithm.
-call fastqr6_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
-
+   call fastqr6_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
+   
 !Try to deflate some eigenvalue
-do while (abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))).and. imin.le.imax)
-beta(imin)=0
-imin = imin + 1
-cont=0
+do while (imin .lt. imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
+   beta(imin)=0
+   imin = imin + 1
+   cont = 0
 end do
-do while (abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))).and.imin.le.imax)
-beta(imax-1)=0
-imax = imax - 1
-cont=0
+
+do while (imin .lt. imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
+   beta(imax-1)=0
+   imax = imax - 1
+   cont = 0
 end do
 
 do i=imin+1,imax-1

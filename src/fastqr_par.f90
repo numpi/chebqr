@@ -76,10 +76,16 @@ complex(8), dimension(2) :: rhorho
 complex(8), dimension(k) :: rho
 double precision :: eps = 2.22e-16
 real(8):: z
+character(len=256) :: buffer
 
 imax=n
 imin=1 
 cont=0
+
+if (imin .ge. imax) then
+   return
+end if
+
 ! Compute the first shift vector, of size 2, using the Wilkinson shift.
 rhorho(2)=sqrt((d(n-1)+d(n))**2-4*(d(n-1)*d(n)-beta(n-1)*conjg(beta(n-1)-u(n)*v(n-1))+u(n-1)*v(n)))
 rhorho(1)=(d(n-1)+d(n)+rhorho(2))/2
@@ -88,86 +94,92 @@ rhorho(2)=(d(n-1)+d(n)-rhorho(2))/2
 ! 2 shifts that are given as input, and return a shift vector of size k.
 call fastqr12_in(n,d,beta,u,v,rhorho,k,rho)
 ! Try to do some deflation.
-do while (abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))).and. imin.le.imax)
+do while (imin .lt. imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
 	beta(imin)=0
 	imin = imin + 1
 	cont=0
 end do
-do while (beta(imax-1)==0 .and. imin .le. imax)
+do while (imax .gt. 1 .and. beta(imax-1)==0)
 	imax = imax - 1
 	cont=0
 end do
 
 
 its=1
-do while (imax-imin .ge. 350)
-	its=its+1
-	! Try to do some deflation.
-	do i=imin+1,imax-1
-		if (abs(beta(i))<eps*(abs(d(i))+abs(d(i+1)))) then
-			beta(i)=0
-			! If a deflation occurs in the middle of the matrix, 
-			! compute the eigenvalues of the smallest diagonal block, 
-			! using a structured QR algorithm without aggressive
-			! early deflation. 
-			if (i.le. (imax-imin)/2) then
-				call fastqr6(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i))
-				do while (abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))).and. imin.le.imax)
-					beta(imin)=0
-					imin = imin + 1
-					cont=0
-				end do
-			else
-				call fastqr6(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax))
-				do while (abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))).and.imin.le.imax)
-					beta(imax-1)=0
-					imax = imax - 1
-					cont=0
-				end do
-			end if
-		end if
-	end do
-		! Perform k steps of the structured QR algorithm using
-                ! k shifts that are given as input, and return a shift vector of size k.
-		! If the size of the martix is large enough perform it in parallel. 
-	if (imax-imin .ge. 5) then
-		call fastqr10_in_par(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),rho,k,np)
-	else	
-		call fastqr10_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),rho,k)
-	end if
-		! Try to do some deflation.
-	do while (abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))).and. imin.le.imax)
-		beta(imin)=0
-		imin = imin + 1
-		cont=0
-	end do
-	do while (beta(imax-1)==0.and.imin.le.imax)
-		imax = imax - 1
-		cont=0
-	end do
-
-	cont=cont+1
-	
-	! If after some QR iteration there is not delation, compute a random shift vector.
-	if (cont==10) then
-		do i=1,k
-			call random_number(z)
-			rho(i)=z
-		end do
-		! Perform k seps of the structured QR algorithm using
-                ! k shifts that are given as input, and return a shift vector of size k.
-		 ! If the size of the martix is large enough perform it in parallel. 
-		if (imax-imin .ge. 5) then
-			call fastqr10_in_par(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),rho,k,np)
-		else	
-			call fastqr10_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),rho,k)
-		end if
-		cont=0
-	end if
+do while (imax-imin .ge. 35)
+   its=its+1
+   ! Try to do some deflation.
+   do i=1,0 ! imin+1,imax-1
+      if (abs(beta(i))<eps*(abs(d(i))+abs(d(i+1)))) then
+         beta(i)=0
+         write(buffer, *) 'deflation at', i, '\n'
+         call mexPrintf(buffer)
+     
+         ! If a deflation occurs in the middle of the matrix, 
+         ! compute the eigenvalues of the smallest diagonal block, 
+         ! using a structured QR algorithm without aggressive
+         ! early deflation. 
+         if (i.le. (imax-imin)/2) then
+            call fastqr6(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i))
+            do while (abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))).and. imin.le.imax)
+               beta(imin)=0
+               imin = imin + 1
+               cont=0
+            end do
+         else
+            call fastqr6(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax))
+            do while (abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))).and.imin.le.imax)
+               beta(imax-1)=0
+               imax = imax - 1
+               cont=0
+            end do
+         end if
+      end if
+   end do
+   ! Perform k steps of the structured QR algorithm using
+   ! k shifts that are given as input, and return a shift vector of size k.
+   ! If the size of the martix is large enough perform it in parallel. 
+   if (imax-imin .ge. 5) then
+      call fastqr10_in_par(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),rho,k,np)
+   else	
+      call fastqr10_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),rho,k)
+   end if
+   ! Try to do some deflation.
+   do while (abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))).and. imin.le.imax)
+      beta(imin)=0
+      imin = imin + 1
+      cont=0
+   end do
+   do while (beta(imax-1)==0.and.imin.le.imax)
+      imax = imax - 1
+      cont=0
+   end do
+   
+   cont=cont+1
+   
+   ! If after some QR iteration there is not deflation, compute a random shift vector.
+   if (cont==10) then
+      do i=1,k
+         call random_number(z)
+         rho(i)=z
+      end do
+      ! Perform k seps of the structured QR algorithm using
+      ! k shifts that are given as input, and return a shift vector of size k.
+      ! If the size of the martix is large enough perform it in parallel. 
+      if (imax-imin .ge. 5) then
+         call fastqr10_in_par(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),rho,k,np)
+      else	
+         call fastqr10_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),rho,k)
+      end if
+      cont=0
+   end if
 end do
 ! When the size of the matrix becames small, perform a structured QR algorithm
 ! without aggressive early deflation.
-call fastqr6(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
+if (imax .gt. imin) then
+   call fastqr6(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
+end if
+
 end subroutine aggressive_deflation
 
 !---------------------------------------------------
@@ -1239,30 +1251,33 @@ imin=1
 cont=0
 
 !Try to deflate some eigenvalue
-do while (abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))).and. imin.le.imax)
-beta(imin)=0
-imin = imin + 1
+do while (imin .lt. imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
+   beta(imin)=0
+   imin = imin + 1
 end do
-do while (abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))).and.imin.le.imax)
-beta(imax-1)=0
-imax = imax - 1
-end do
-do while (imax-imin .gt. 0)
 
+do while (imin .lt. imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
+   beta(imax-1)=0
+   imax = imax - 1
+end do
+
+do while (imax - imin .gt. 0)
 
 ! Compute a step of the QR algorithm.
 call fastqr6_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
 
+
 !Try to deflate some eigenvalue
-do while (abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))).and. imin.le.imax)
-beta(imin)=0
-imin = imin + 1
-cont=0
+do while (imin .lt. imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
+   beta(imin)=0
+   imin = imin + 1
+   cont = 0
 end do
-do while (abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))).and.imin.le.imax)
-beta(imax-1)=0
-imax = imax - 1
-cont=0
+
+do while (imin .lt. imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
+   beta(imax-1)=0
+   imax = imax - 1
+   cont = 0
 end do
 
 do i=imin+1,imax-1
