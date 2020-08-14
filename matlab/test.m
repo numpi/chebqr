@@ -1,6 +1,6 @@
 % This is just a simple test to check if everything works
 
-n = 256;
+n = 2048;
 rng(0);
 d = rand(n,1); beta=rand(n-1,1);
 u = rand(n,1); v = rand(n,1);
