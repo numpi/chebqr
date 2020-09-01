@@ -87,9 +87,9 @@ end subroutine chasing
 !      se t=0 viene eseguito in sequenziale, altrimenti in parallelo.           magari poi modificare la cosa in modo piu formale
 
 
-subroutine fastfastqr(n,d,beta,u,v,k,t)
+subroutine fastfastqr(n,d,beta,u,v,k,np)
 implicit none
-integer, intent(in)  :: n,k,t
+integer, intent(in)  :: n,k,np
 complex(8), dimension(n), intent(inout) :: d, u, v
 complex(8), dimension(n-1), intent(inout) :: beta
 
@@ -101,10 +101,10 @@ if(n.lt.350)then
 else
 	! Perform the structured QR algorithm with aggressive early
 	! deflation
-	if (t.eq.0) then
+	if (np.eq.1) then
 	call aggressive_deflation(n,d,beta,u,v,k)
 	else
-	call aggressive_deflation_par(n,d,beta,u,v,k,4)
+	call aggressive_deflation_par(n,d,beta,u,v,k,np)
 	end if
 end if
 end subroutine
@@ -1130,7 +1130,7 @@ double precision :: eps = 2.22e-16
 complex(8), dimension(np):: bulge 
 real :: start, finish
 
-siz=(n-1)/np
+siz=(n-3)/np
 
 if (n>k*3/2) then
 
@@ -1296,6 +1296,8 @@ end subroutine fastqr12_in_par
 !
 ! K    INTEGER. Number of QR steps performed before the aggressive
 !      early deflation is applied.
+!
+! NP   INTEGER. Number of cores used for parallelization.
 
 subroutine aggressive_deflation_par(n,d,beta,u,v,k,np)
 implicit none
@@ -1330,7 +1332,7 @@ end do
 its=1
 do while (imax-imin .ge. 350)
 	its=its+1
-	! Try to do some deflation.
+	! Try to do some middle deflation.
 	do i=imin+1,imax-1
 		if (abs(beta(i))<eps*(abs(d(i))+abs(d(i+1)))) then
 			beta(i)=0
