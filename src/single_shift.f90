@@ -95,6 +95,7 @@ complex(8), dimension(n-1), intent(inout) :: beta
 
  
 if(n.lt.350)then
+
 	! Perform the structured QR algorithm without aggressive early
 	! deflation
 	call fastqr6(n,d,beta,u,v)
@@ -102,8 +103,10 @@ else
 	! Perform the structured QR algorithm with aggressive early
 	! deflation
 	if (np.eq.1) then
+	
 	call aggressive_deflation(n,d,beta,u,v,k)
 	else
+	
 	call aggressive_deflation_par(n,d,beta,u,v,k,np)
 	end if
 end if
@@ -513,11 +516,14 @@ if (n>K) then
     h(1)=beta(n-K)
     ! Compute the structured Schur form of the kxk trailing principal submatrix, updating the 
     ! vector h.
+  
     call fastqr11(K, h(1:K), d(n-K+1:n),beta(n-K+1:n-1),u(n-K+1:n),v(n-K+1:n))
+ 
     i=K
     j=0
     ! Try to deflate some eigenvalue from the k+1xk+1 trailing principal submatrix
     do while ((i .gt. 0) .AND. (j .lt. i))
+  
 	if (abs(beta(n-K)).lt. abs(d(i+n-K))) then
 	l=beta(n-K)
 	else
@@ -563,6 +569,7 @@ hatd=d(1+n-K:i+n-K)
   	! Store the smallest (in magnitude) w elements of hatd as shifts.
 	call sort_1(i,hatd)
 	RHO=hatd(1:w)
+	deallocate(hatd)
 end if
 else
 ! If the size of the matrix is small, compute the egenvalues performing
@@ -744,10 +751,10 @@ end subroutine Hessenberg_reduction
 ! U,V  COMPLEX(8), DIMENSION(N). Vectors such that the rank one part of 
 !      the matrix is UV*.
 
-subroutine fastqr11(n,h,d,beta,u,v) 
+recursive subroutine fastqr11(n,h,d,beta,u,v) 
 implicit none
 integer, intent(in)  :: n
-integer :: imin, imax, p
+integer :: imin, imax, p,i
 complex(8), dimension(n), intent(inout) :: d, u, v, h
 complex(8), dimension(n-1), intent(inout) :: beta
 double precision :: eps = 2.22e-16
@@ -758,7 +765,9 @@ imax=n
 imin=1 
 do while (imax-imin .gt. 0)
 	! Compute a step of the QR algorithm updating h.
+	
 	call fastqr11_in(imax-imin+1, h(imin:imax),d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
+	
 	!Try to deflate some eigenvalue
 	do while (imin.le.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
 		beta(imin)=0
@@ -768,6 +777,28 @@ do while (imax-imin .gt. 0)
 		beta(imax-1)=0
 		imax = imax - 1
 	end do
+	do i=imin+1,imax-1
+if (abs(beta(i))<eps*(abs(d(i))+abs(d(i+1)))) then
+beta(i)=0
+! If a deflation occurs in the middle of the matrix, 
+! compute the eigenvalues of the smallest diagonal block, 
+! using a recursive structured QR algorithm. 
+if (i.le. (imax-imin)/2) then
+call fastqr11(i-imin+1,h(imin:i), d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i))
+do while (imin.le.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
+beta(imin)=0
+imin = imin + 1
+end do
+else
+call fastqr11(imax-i,h(i+1:imax), d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax))
+do while (imin.le.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
+beta(imax-1)=0
+imax = imax - 1
+end do
+end if
+end if
+end do
+
 end do
 
 
@@ -1141,6 +1172,7 @@ if (n>k*3/2) then
 					
 		!$OMP PARALLEL DO
 		do q=1,p 
+		
 			qq(q)=(q-1)*(siz)+1
 			call chasing(siz-1, d(qq(q)+1:qq(q)+siz-1), beta(qq(q):qq(q)+siz-1), u(qq(q)+1:qq(q)+siz-1), &
 			v(qq(q)+1:qq(q)+siz-1),bulge(q))
@@ -1160,6 +1192,7 @@ if (n>k*3/2) then
 		
 		!$OMP PARALLEL DO
 		do q=1,np 
+		
 			qq(q)=(q-1)*(siz)+1
 			call chasing(siz-1, d(qq(q)+1:qq(q)+siz-1), beta(qq(q):qq(q)+siz-1), u(qq(q)+1:qq(q)+siz-1), &
 			v(qq(q)+1:qq(q)+siz-1),bulge(q))
@@ -1183,6 +1216,7 @@ if (n>k*3/2) then
 	do p=2,np
 		!$OMP PARALLEL DO
 		do q=p,np 
+		
 			qq(q)=(q-1)*(siz)+1
 			call chasing(siz-1, d(qq(q)+1:qq(q)+siz-1), beta(qq(q):qq(q)+siz-1), u(qq(q)+1:qq(q)+siz-1), &
 			v(qq(q)+1:qq(q)+siz-1),bulge(q))
@@ -1190,6 +1224,7 @@ if (n>k*3/2) then
                	!$OMP END PARALLEL DO
                	   	
                	do q=np,p,-1
+               	
 			call chasing(3, d(qq(q)+siz-1:qq(q)+siz+1), beta(qq(q)+siz-2:qq(q)+siz+1), u(qq(q)+siz-1:qq(q)+siz+1), &
 			v(qq(q)+siz-1:qq(q)+siz+1),bulge(q))
 		end do 
@@ -1264,7 +1299,9 @@ if (n>3/2*k) then
         end do
         ! Perform a step of the aggressive early deflation and compute the new 
 	! shift vector.
+	
 	call aggressive_deflation_in(n,d(1:n),beta(1:n-1),u(1:n),v(1:n),k,RHRH)
+	
 else
 	! If the size of the matrix is small, compute the egenvalues performing
 	! a structured QR algorithm without aggressive early deflation.
