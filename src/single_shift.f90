@@ -23,16 +23,20 @@ implicit none
 integer, intent(in)  :: n
 complex(8), dimension(n), intent(inout) :: d, u,v
 complex(8), dimension(n+1), intent(inout) :: beta
+complex(8), dimension(n+1) :: beta2
 complex(8) :: gamm
 complex(8), intent (inout) :: bulge
 complex(8), dimension(3,2) :: R
 complex(8) :: S, C, z
-integer :: i
+integer :: i  
 
 do i=1,n-1
 	gamm=conjg(beta(i+1)-v(i)*u(i+1))+u(i)*v(i+1)
 	z=beta(i)
+	
+
     	call zrotg(z,bulge,C,S)
+
 
     	beta(i)=z
 	R(1,1)=d(i)
@@ -89,11 +93,13 @@ end subroutine chasing
 
 subroutine fastfastqr(n,d,beta,u,v,k,np)
 implicit none
-integer, intent(in)  :: n,k,np
+integer, intent(in)  :: n,np,k
+integer:: npnp,kk
 complex(8), dimension(n), intent(inout) :: d, u, v
 complex(8), dimension(n-1), intent(inout) :: beta
 
- 
+npnp=np
+kk=k 
 if(n.lt.350)then
 
 	! Perform the structured QR algorithm without aggressive early
@@ -107,7 +113,7 @@ else
 	call aggressive_deflation(n,d,beta,u,v,k)
 	else
 	
-	call aggressive_deflation_par(n,d,beta,u,v,k,np)
+	call aggressive_deflation_par(n,d,beta,u,v,kk,npnp)
 	end if
 end if
 end subroutine
@@ -163,12 +169,12 @@ rho=0
 call aggressive_deflation_in(n,d,beta,u,v,k,rho)
 
 ! Try to do some deflation.
-do while ( imin.le.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
+do while ( imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
 	beta(imin)=0
 	imin = imin + 1
 	cont=0
 end do
-do while (imin .le. imax .and. (beta(imax-1)==0))
+do while (imin .lt. imax .and. (beta(imax-1)==0))
 	imax = imax - 1
 	cont=0
 end do
@@ -187,14 +193,14 @@ do while (imax-imin .ge. 350)
 				! early deflation. 
 				if (i.le. (imax-imin)/2) then
 				call fastqr6(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i))
-					do while (imin.le.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
+					do while (imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
 					beta(imin)=0
 					imin = imin + 1
 					cont=0
 				end do
 			else
 				call fastqr6(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax))
-					do while ( imin.le.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
+					do while ( imin.lt.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
 					beta(imax-1)=0
 					imax = imax - 1
 					cont=0
@@ -209,12 +215,12 @@ do while (imax-imin .ge. 350)
         !call cpu_time(finish)
         !print'("time3=",f6.3," seconds")', finish-start
 		! Try to do some deflation.
-	do while ( imin.le.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
+	do while ( imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
 		beta(imin)=0
 		imin = imin + 1
 		cont=0
 	end do
-	do while (imin.le.imax .and. beta(imax-1)==0)
+	do while (imin.lt.imax .and. beta(imax-1)==0)
 		imax = imax - 1
 		cont=0
 	end do
@@ -351,11 +357,11 @@ imin=1
 cont=0
 
 !Try to deflate some eigenvalue
-do while ( imin.le.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
+do while ( imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
 beta(imin)=0
 imin = imin + 1
 end do
-do while (imin.le.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
+do while (imin.lt.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
 beta(imax-1)=0
 imax = imax - 1
 end do
@@ -373,12 +379,12 @@ do while (imax-imin .gt. 0)
 	call fastqr_ss_in(imax-imin+1,d(imin:imax),beta(imin:imax-1),u(imin:imax),v(imin:imax),rho)
 
 !Try to deflate some eigenvalue
-do while (imin.le.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
+do while (imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
 beta(imin)=0
 imin = imin + 1
 cont=0
 end do
-do while (imin.le.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
+do while (imin.lt.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
 beta(imax-1)=0
 imax = imax - 1
 cont=0
@@ -392,14 +398,14 @@ beta(i)=0
 ! using a recursive structured QR algorithm. 
 if (i.le. (imax-imin)/2) then
 call fastqr6(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i))
-do while (imin.le.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
+do while (imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
 beta(imin)=0
 imin = imin + 1
 cont=0
 end do
 else
 call fastqr6(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax))
-do while (imin.le.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
+do while (imin.lt.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
 beta(imax-1)=0
 imax = imax - 1
 cont=0
@@ -511,19 +517,19 @@ complex, dimension(2,2) :: G
 double precision :: eps = 2.22e-16
 
 K=w*3/2
-if (n>K) then
+if (n.gt.K) then
     h=0
     h(1)=beta(n-K)
     ! Compute the structured Schur form of the kxk trailing principal submatrix, updating the 
     ! vector h.
-  
+
     call fastqr11(K, h(1:K), d(n-K+1:n),beta(n-K+1:n-1),u(n-K+1:n),v(n-K+1:n))
- 
+
     i=K
     j=0
     ! Try to deflate some eigenvalue from the k+1xk+1 trailing principal submatrix
     do while ((i .gt. 0) .AND. (j .lt. i))
-  
+
 	if (abs(beta(n-K)).lt. abs(d(i+n-K))) then
 	l=beta(n-K)
 	else
@@ -564,8 +570,10 @@ hatd=d(1+n-K:i+n-K)
    if (i< w) then
     ! The stored eigenvalues are not enough to produce w shifts, hence perform
     ! a new aggressive deflation step. 
+
        call aggressive_deflation_in(n-K+i,d(1:n-K+i),beta(1:n-K+i-1),u(1:n-K+i),v(1:n-K+i),w,RHO)
   else
+
   	! Store the smallest (in magnitude) w elements of hatd as shifts.
 	call sort_1(i,hatd)
 	RHO=hatd(1:w)
@@ -754,55 +762,85 @@ end subroutine Hessenberg_reduction
 recursive subroutine fastqr11(n,h,d,beta,u,v) 
 implicit none
 integer, intent(in)  :: n
-integer :: imin, imax, p,i
+integer :: imin, imax, p,i,cont
 complex(8), dimension(n), intent(inout) :: d, u, v, h
 complex(8), dimension(n-1), intent(inout) :: beta
+complex(8):: rho
+real (8) :: z
 double precision :: eps = 2.22e-16
-
 
 
 imax=n
 imin=1 
+cont=0
+
+
+!Try to deflate some eigenvalue
+do while ( imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
+beta(imin)=0
+imin = imin + 1
+end do
+do while (imin.lt.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
+beta(imax-1)=0
+imax = imax - 1
+end do
+
 do while (imax-imin .gt. 0)
+
 	! Compute a step of the QR algorithm updating h.
+
 	
 	call fastqr11_in(imax-imin+1, h(imin:imax),d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
-	
+
 	!Try to deflate some eigenvalue
-	do while (imin.le.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
-		beta(imin)=0
-		imin = imin + 1
-	end do
-	do while (imin.le.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
-		beta(imax-1)=0
-		imax = imax - 1
-	end do
-	do i=imin+1,imax-1
+do while (imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
+beta(imin)=0
+imin = imin + 1
+cont=0
+end do
+do while (imin.lt.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
+beta(imax-1)=0
+imax = imax - 1
+cont=0
+end do
+	
+
+do i=imin+1,imax-2
 if (abs(beta(i))<eps*(abs(d(i))+abs(d(i+1)))) then
 beta(i)=0
+cont=0
 ! If a deflation occurs in the middle of the matrix, 
 ! compute the eigenvalues of the smallest diagonal block, 
 ! using a recursive structured QR algorithm. 
 if (i.le. (imax-imin)/2) then
 call fastqr11(i-imin+1,h(imin:i), d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i))
-do while (imin.le.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
+do while (imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
 beta(imin)=0
 imin = imin + 1
 end do
 else
 call fastqr11(imax-i,h(i+1:imax), d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax))
-do while (imin.le.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
+do while (imin.lt.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
 beta(imax-1)=0
 imax = imax - 1
 end do
 end if
 end if
 end do
+cont=cont+1
+
+
 
 end do
 
 
+
 end subroutine fastqr11
+
+
+
+
+
 
 
 !--------------------------------------------------------------
@@ -843,11 +881,12 @@ complex(8), dimension(2,2) :: A
 integer :: i ,p
 complex(8) :: S, C
 complex(8):: z
+real(8)::zz
 double precision :: eps = 2.22e-16
 
 
-
 if (n>2) then
+
 	! Compute the Wilkinson shift.
 	gamm=conjg(beta(1)-v(1)*u(2))+u(1)*v(2)
 	rho=sqrt((d(n-1)+d(n))**2-4*(d(n-1)*d(n)-(beta(n-1)*(conjg(beta(n-1)-u(n)*v(n-1))+u(n-1)*v(n)))))
@@ -858,6 +897,9 @@ if (n>2) then
 	else
     		rho=l(2);
 	endif
+	
+
+	
 	! Perform the structured QR step.
 	z=d(1)-rho
 	call zrotg(z,beta(1),C,S)
@@ -884,9 +926,9 @@ if (n>2) then
 	d(1)=real(d(1)-u(1)*v(1))+(u(1)*v(1))
 	d(2)=real(d(2)-u(2)*v(2))+(u(2)*v(2))
 	
-	
 	do i=1,n-3
-    		gamm=conjg(beta(i+1)-v(i+1)*u(i+2))+u(i+1)*v(i+2)
+	
+    	gamm=conjg(beta(i+1)-v(i+1)*u(i+2))+u(i+1)*v(i+2)
 	z=beta(i)
     	call zrotg(z,R(3,1),C,S)
 
@@ -935,7 +977,6 @@ if (n>2) then
 
 	d(n-1)=real(d(n-1)-u(n-1)*v(n-1))+(u(n-1)*v(n-1))
     	d(n)=real(d(n)-u(n)*v(n))+(u(n)*v(n))
-
 else
     if (n==2) then 
 	gamm=conjg(beta(1)-u(2)*v(1))+u(1)*v(2)
@@ -944,7 +985,7 @@ else
 	A(2,1)=beta(1)
 	A(1,2)=gamm
 	A(2,2)=d(2)
-if (A(2,1).NE.0) then	
+	if (A(2,1).NE.0) then	
 	rho=sqrt((A(1,1)+A(2,2))**2-4*(A(1,1)*A(2,2)-A(2,1)*A(1,2)))
 	l(1)=(A(1,1)+A(2,2)+rho)/2
 	l(2)=(A(1,1)+A(2,2)-rho)/2
@@ -1160,22 +1201,37 @@ complex(8) :: z
 double precision :: eps = 2.22e-16
 complex(8), dimension(np):: bulge 
 real :: start, finish
+logical:: check=.false.
 
 siz=(n-3)/np
+
 
 if (n>k*3/2) then
 
 	do p=1,np-1
+	if (modulo(p,10).eq.0)then
+	check=.true.
+	else
+	check=.false.
+	end if
 		rho=RH(p)
 		
 		call create_bulge(d(1:2),beta(1:2),u(1:2),v(1:2),rho,bulge(1))
-					
+
 		!$OMP PARALLEL DO
 		do q=1,p 
 		
 			qq(q)=(q-1)*(siz)+1
 			call chasing(siz-1, d(qq(q)+1:qq(q)+siz-1), beta(qq(q):qq(q)+siz-1), u(qq(q)+1:qq(q)+siz-1), &
 			v(qq(q)+1:qq(q)+siz-1),bulge(q))
+			
+			if (check) then
+			do i=qq(q),qq(q)+siz-3
+			if (abs(beta(i))<eps*(abs(d(i))+abs(d(i+1)))) then
+			beta(i)=0
+			end if
+	        	end do
+	        	end if
 		end do
                	!$OMP END PARALLEL DO
                	
@@ -1183,29 +1239,77 @@ if (n>k*3/2) then
 			call chasing(3, d(qq(q)+siz-1:qq(q)+siz+1), beta(qq(q)+siz-2:qq(q)+siz+1), u(qq(q)+siz-1:qq(q)+siz+1), &
 			v(qq(q)+siz-1:qq(q)+siz+1),bulge(q))
 			bulge(q+1)=bulge(q)
+			
+			if (check) then
+			do i=qq(q)+siz-2,qq(q)+siz-1
+				if (abs(beta(i))<eps*(abs(d(i))+abs(d(i+1)))) then
+				beta(i)=0
+				end if
+			end do
+			end if
+			
 		end do  
+		
 	end do
-	
+
+      	
 	do p=np,k
+	
+	if (modulo(p,10).eq.0)then
+	check=.true.
+	else
+	check=.false.
+	end if
+
 		rho=RH(p)
-		call create_bulge(d(1:2),beta(1:2),u(1:2),v(1:2),rho,bulge(1))
+ 		call create_bulge(d(1:2),beta(1:2),u(1:2),v(1:2),rho,bulge(1))
+
 		
-		!$OMP PARALLEL DO
-		do q=1,np 
-		
+    
+		!$OMP PARALLEL DO		
+		do q=1,np 		
 			qq(q)=(q-1)*(siz)+1
-			call chasing(siz-1, d(qq(q)+1:qq(q)+siz-1), beta(qq(q):qq(q)+siz-1), u(qq(q)+1:qq(q)+siz-1), &
-			v(qq(q)+1:qq(q)+siz-1),bulge(q))
-		end do
+			    
+		call chasing(siz-1, d(qq(q)+1:qq(q)+siz-1), beta(qq(q):qq(q)+siz-1), u(qq(q)+1:qq(q)+siz-1), &
+		v(qq(q)+1:qq(q)+siz-1),bulge(q))
+		
+		
+		if (check) then
+		do i=qq(q),qq(q)+siz-3
+		if (abs(beta(i))<eps*(abs(d(i))+abs(d(i+1)))) then
+			beta(i)=0
+		end if
+	        end do
+	        end if
+	        
+		end do	
                	!$OMP END PARALLEL DO
-               	   	
+   	
                	do q=np,1,-1
+               	
 			call chasing(3, d(qq(q)+siz-1:qq(q)+siz+1), beta(qq(q)+siz-2:qq(q)+siz+1), u(qq(q)+siz-1:qq(q)+siz+1), &
 			v(qq(q)+siz-1:qq(q)+siz+1),bulge(q))
-		end do 
+			
+			if (check) then
+			do i=qq(q)+siz-2,qq(q)+siz-1
+				if (abs(beta(i))<eps*(abs(d(i))+abs(d(i+1)))) then
+				beta(i)=0
+				end if
+			end do
+			end if
+			
+		end do 	
 	
 		call chasing(n-(qq(np)+siz+1),d(qq(np)+siz+1:n-1),beta(qq(np)+siz:n-1),u(qq(np)+siz+1:n-1),v(qq(np)+siz+1:n-1),bulge(np))
-	
+		
+		if (check) then
+		do i=qq(np)+siz,n-1
+				if (abs(beta(i))<eps*(abs(d(i))+abs(d(i+1)))) then
+				beta(i)=0
+				end if
+			end do
+		end if
+		
 		call delete_bulge(d(n-1:n),beta(n-2:n-1),u(n-1:n),v(n-1:n),bulge(np))
 	
 		do q=np-1,1,-1
@@ -1214,24 +1318,52 @@ if (n>k*3/2) then
 	end do
 
 	do p=2,np
+	if (modulo(p,10).eq.0)then
+	check=.true.
+	else
+	check=.false.
+	end if
 		!$OMP PARALLEL DO
 		do q=p,np 
-		
 			qq(q)=(q-1)*(siz)+1
 			call chasing(siz-1, d(qq(q)+1:qq(q)+siz-1), beta(qq(q):qq(q)+siz-1), u(qq(q)+1:qq(q)+siz-1), &
 			v(qq(q)+1:qq(q)+siz-1),bulge(q))
+			
+			if (check) then
+			do i=qq(q),qq(q)+siz-3
+			if (abs(beta(i))<eps*(abs(d(i))+abs(d(i+1)))) then
+			beta(i)=0
+			end if
+	        	end do
+	        	end if
+	        	
 		end do
                	!$OMP END PARALLEL DO
-               	   	
-               	do q=np,p,-1
-               	
+            	   	
+               	do q=p,np
 			call chasing(3, d(qq(q)+siz-1:qq(q)+siz+1), beta(qq(q)+siz-2:qq(q)+siz+1), u(qq(q)+siz-1:qq(q)+siz+1), &
 			v(qq(q)+siz-1:qq(q)+siz+1),bulge(q))
-		end do 
-	
+			
+			if (check) then
+			do i=qq(q)+siz-2,qq(q)+siz-1
+				if (abs(beta(i))<eps*(abs(d(i))+abs(d(i+1)))) then
+				beta(i)=0
+				end if
+			end do
+			end if
+			
+		end do 	
 		call chasing(n-(qq(np)+siz+1),d(qq(np)+siz+1:n-1),beta(qq(np)+siz:n-1),u(qq(np)+siz+1:n-1),&
 		v(qq(np)+siz+1:n-1),bulge(np))
 		
+		if (check) then
+		do i=qq(np)+siz,n-1
+				if (abs(beta(i))<eps*(abs(d(i))+abs(d(i+1)))) then
+				beta(i)=0
+				end if
+			end do
+		end if
+				
 		call delete_bulge(d(n-1:n),beta(n-2:n-1),u(n-1:n),v(n-1:n),bulge(np))
 	
 		do q=np-1,p,-1
@@ -1290,6 +1422,7 @@ n=nn
 
 if (n>3/2*k) then
 ! Perform h steps of the structured QR algorithm.
+
 	call fastqr_ss_in_par(n,d,beta,u,v,RHRH,h,np)
 
 	! Try to do some deflation in the final part of the matrix.
@@ -1299,9 +1432,10 @@ if (n>3/2*k) then
         end do
         ! Perform a step of the aggressive early deflation and compute the new 
 	! shift vector.
+
 	
 	call aggressive_deflation_in(n,d(1:n),beta(1:n-1),u(1:n),v(1:n),k,RHRH)
-	
+
 else
 	! If the size of the matrix is small, compute the egenvalues performing
 	! a structured QR algorithm without aggressive early deflation.
@@ -1338,7 +1472,8 @@ end subroutine fastqr12_in_par
 
 subroutine aggressive_deflation_par(n,d,beta,u,v,k,np)
 implicit none
-integer, intent(in)  :: n,k,np
+integer, intent(in)  :: n
+integer, intent(inout) :: np,k
 integer :: imin, imax ,its, cont,i
 complex(8), dimension(n), intent(inout) :: d, u, v
 complex(8), dimension(n-1), intent(inout) :: beta
@@ -1356,18 +1491,23 @@ rho=0
 call aggressive_deflation_in(n,d,beta,u,v,k,rho)
 
 ! Try to do some deflation.
-do while ( imin.le.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
+do while ( imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
 	beta(imin)=0
 	imin = imin + 1
 	cont=0
 end do
-do while (imin .le. imax .and. beta(imax-1)==0 )
+do while (imin .lt. imax .and. beta(imax-1)==0 )
 	imax = imax - 1
 	cont=0
 end do
-
+if (isnan(norm2(abs(beta)))) then
+print*, 'NAN'
+stop
+end if
 its=1
 do while (imax-imin .ge. 350)
+do while (imax-imin .ge. 64*np)
+
 	its=its+1
 	! Try to do some middle deflation.
 	do i=imin+1,imax-1
@@ -1379,14 +1519,14 @@ do while (imax-imin .ge. 350)
 				! early deflation. 
 				if (i.le. (imax-imin)/2) then
 				call fastqr6(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i))
-					do while ( imin.le.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
+					do while ( imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
 					beta(imin)=0
 					imin = imin + 1
 					cont=0
 				end do
 			else
 				call fastqr6(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax))
-					do while (imin.le.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
+					do while (imin.lt.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
 					beta(imax-1)=0
 					imax = imax - 1
 					cont=0
@@ -1401,17 +1541,16 @@ do while (imax-imin .ge. 350)
         !call cpu_time(finish)
         !print'("time4=",f6.3," seconds")', finish-start
 		! Try to do some deflation.
-	do while (imin.le.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
+	do while (imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
 		beta(imin)=0
 		imin = imin + 1
 		cont=0
 	end do
-	do while (imin.le.imax .and. beta(imax-1)==0)
+	do while (imin.lt.imax .and. beta(imax-1)==0)
 		imax = imax - 1
 		cont=0
 	end do
 
-	cont=cont+1
 	
 	! If after some QR iteration there is not delation, compute a random shift vector.
 	if (cont==10) then
@@ -1424,6 +1563,9 @@ do while (imax-imin .ge. 350)
                 call fastqr12_in_par(imax-imin+1,d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),k,k, rho,np) 
 		cont=0
 	end if
+	end do
+	np=np/2
+	k=np*6
 end do
 ! When the size of the matrix becames small, perform a structured QR algorithm
 ! without aggressive early deflation.
