@@ -1,6 +1,9 @@
-!SUBROUTINE chasing
+!SUBROUTINE cqr_chasing
 !
-! This subroutine performs a structured bulge chasing.
+! This subroutine performs a structured bulge chasing. Moreover, if JOBH=y
+! this subroutine updates the arbitrary vector h, using the Givens rotations
+!created during the process.
+!
 ! INPUT PARAMETERS
 !
 ! N    INTEGER. Size of the input matrix 
@@ -15,15 +18,20 @@
 !      the matrix is UV*.
 !
 ! BULGE   COMPLEX(8). Value of the bluge.
+!
+! H    COMPLEX(8), DIMENSION(N). Arbitrary input vector.
+!
+! JOBH CHARACTER.  JOBH=y if the arbirtary vector H has to be updated,
+!		   JOB=N otherwise.
 
 
 
-subroutine chasing(n,d,beta,u,v,bulge)
+subroutine cqr_chasing(n,d,beta,u,v,bulge,h,jobh)
 implicit none
 integer, intent(in)  :: n
-complex(8), dimension(n), intent(inout) :: d, u,v
+complex(8), dimension(n), intent(inout) :: d, u,v,h
+character, intent(in):: jobh
 complex(8), dimension(n+1), intent(inout) :: beta
-complex(8), dimension(n+1) :: beta2
 complex(8) :: gamm
 complex(8), intent (inout) :: bulge
 complex(8), dimension(3,2) :: R
@@ -57,15 +65,19 @@ do i=1,n-1
 	call zrot(1, u(i), 1, u(i+1), 1, C, S)
 	call zrot(1, v(i),1,v(i+1), 1, C, conjg(S))
 	
+	if (jobh.eq.'y') then	
+	call zrot(1, h(i), 1, h(i+1), 1, C, S)
+	end if
+	
 	d(i)=real(d(i)-u(i)*v(i))+(u(i)*v(i))
 	d(i+1)=real(d(i+1)-u(i+1)*v(i+1))+(u(i+1)*v(i+1))
 
 	bulge=R(3,1)
 end do
-end subroutine chasing
+end subroutine cqr_chasing
 
 !--------------------------------------------------
-!SUBROUTINE fastfastqr
+!SUBROUTINE cqr_single_eig 
 !
 ! This subroutine computes the eigenvalues of a matrix which is the 
 ! sum  of a hermitian and a rank one matrix, using a structured single shift
@@ -87,11 +99,9 @@ end subroutine chasing
 ! K    INTEGER. Number of QR steps performed before the aggressive
 !      early deflation is applied.
 !
-! T    INTEGER. Per facilitare gli esperimenti ho inserito questo parametro:
-!      se t=0 viene eseguito in sequenziale, altrimenti in parallelo.           magari poi modificare la cosa in modo piu formale
+! NP    INTEGER. Number of cores available for parallelization.           
 
-
-subroutine fastfastqr(n,d,beta,u,v,k,np)
+subroutine cqr_single_eig(n,d,beta,u,v,k,np)
 implicit none
 integer, intent(in)  :: n,np,k
 integer:: npnp,kk
@@ -104,23 +114,24 @@ if(n.lt.350)then
 
 	! Perform the structured QR algorithm without aggressive early
 	! deflation
-	call fastqr6(n,d,beta,u,v)
+	call cqr_single_eig_small(n,d,beta,u,v,0.0,'n')  
 else
 	! Perform the structured QR algorithm with aggressive early
 	! deflation
 	if (np.eq.1) then
 	
-	call aggressive_deflation(n,d,beta,u,v,k)
+	call cqr_single_eig_aed(n,d,beta,u,v,k) 
 	else
-	
-	call aggressive_deflation_par(n,d,beta,u,v,kk,npnp)
+	! Perform the structured QR algorithm with aggressive early
+	! deflation in a parallel way.
+	call cqr_single_eig_aed_par(n,d,beta,u,v,kk,npnp) 
 	end if
 end if
 end subroutine
 
 !--------------------------------------------------
 
-!SUBROUTINE aggressive_deflation
+!SUBROUTINE cqr_single_eig_aed
 !
 ! This subroutine computes the eigenvalues of a matrix which is the 
 ! sum  of a hermitian and a rank one matrices, using a structured single shift
@@ -142,31 +153,26 @@ end subroutine
 ! K    INTEGER. Number of QR steps performed before the aggressive
 !      early deflation is applied.
 
-subroutine aggressive_deflation(n,d,beta,u,v,k)
+subroutine cqr_single_eig_aed(n,d,beta,u,v,k)
 implicit none
 integer, intent(in)  :: n,k
 integer :: imin, imax ,its, cont,i
 complex(8), dimension(n), intent(inout) :: d, u, v
 complex(8), dimension(n-1), intent(inout) :: beta
 complex(8), dimension(k) :: rho
-double precision :: eps = 2.22e-16
+double precision :: eps, dlamch 
 real(8):: z
 real:: start, finish
+
+eps=dlamch('e')
 
 imax=n
 imin=1 
 cont=0
 rho=0
-! Compute the first shift vector, of size 2, using the Wilkinson shift.
-!!rho(2)=sqrt((d(n-1)+d(n))**2-4*(d(n-1)*d(n)-beta(n-1)*conjg(beta(n-1)-u(n)*v(n-1))+u(n-1)*v(n)))
-!!rho(1)=(d(n-1)+d(n)+rho(2))/2
-!!rho(2)=(d(n-1)+d(n)-rho(2))/2
-! Perform 2 seps of the structured QR algorithm using
-! 2 shifts that are given as input, and return a shift vector of size k.
-!!call  fastqr12_in(n,d,beta,u,v,2,k,rho)
 
 ! Compute the first shift vector, of size k, using the Aggressive early deflation.
-call aggressive_deflation_in(n,d,beta,u,v,k,rho)
+call cqr_aggressive_deflation(n,d,beta,u,v,k,rho)  
 
 ! Try to do some deflation.
 do while ( imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
@@ -192,14 +198,14 @@ do while (imax-imin .ge. 350)
 				! using a structured QR algorithm without aggressive
 				! early deflation. 
 				if (i.le. (imax-imin)/2) then
-				call fastqr6(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i))
+				call cqr_single_eig_small(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i),0.0,'n')
 					do while (imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
 					beta(imin)=0
 					imin = imin + 1
 					cont=0
 				end do
 			else
-				call fastqr6(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax))
+				call cqr_single_eig_small(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax),0.0,'n')
 					do while ( imin.lt.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
 					beta(imax-1)=0
 					imax = imax - 1
@@ -210,10 +216,9 @@ do while (imax-imin .ge. 350)
 	end do
 		! Perform k steps of the structured QR algorithm using
                 ! k shifts that are given as input, and return a shift vector of size k.
-              !  call cpu_time(start)
-        call  fastqr12_in(imax-imin+1,d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),k,k, rho) 
-        !call cpu_time(finish)
-        !print'("time3=",f6.3," seconds")', finish-start
+             
+        call  cqr_multishift_sweep(imax-imin+1,d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),k,k, rho)
+
 		! Try to do some deflation.
 	do while ( imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
 		beta(imin)=0
@@ -235,22 +240,24 @@ do while (imax-imin .ge. 350)
 		end do
 		! Perform k seps of the structured QR algorithm using
                 ! k shifts that are given as input, and return a shift vector of size k.
-                call fastqr12_in(imax-imin+1,d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),k,k, rho) 
+                call cqr_multishift_sweep(imax-imin+1,d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),k,k, rho) 
 		cont=0
 	end if
 end do
 ! When the size of the matrix becames small, perform a structured QR algorithm
 ! without aggressive early deflation.
-call fastqr6(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
-end subroutine aggressive_deflation
+call cqr_single_eig_small(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),0.0,'n')
+end subroutine cqr_single_eig_aed
 
 !----------------------------------------------------
 
-!SUBROUTINE fastqr_ss_in
+!SUBROUTINE cqr_single_sweep 
 !
 ! This subroutine performs a step of the single shift structured QR algorithm,
 ! where the shift is given as an input,  to compute the eigenvalue of a matrix 
-!which is the sum of a hermitian and a  rank one matrix. 
+!which is the sum of a hermitian and a  rank one matrix.  Moreover, if JOBH=y
+! this subroutine updates the arbitrary vector h, using the Givens rotations
+!created during the process.
 !
 ! INPUT PARAMETERS
 !
@@ -266,11 +273,17 @@ end subroutine aggressive_deflation
 !      the matrix is UV*.
 !
 ! RHO  COMPLEX(8). Value of the shift.
+!
+! H    COMPLEX(8), DIMENSION(N). Arbitrary input vector.
+!
+! JOBH CHARACTER.  JOBH=y if the arbirtary vector H has to be updated,
+!		   JOB=N otherwise.
 
-subroutine fastqr_ss_in(n,d,beta,u,v,rho)
+subroutine cqr_single_sweep(n,d,beta,u,v,rho,h,jobh)
 implicit none
 integer, intent(in)  :: n
-complex(8), dimension(n), intent(inout) :: d, u,v
+character, intent(in) ::jobh
+complex(8), dimension(n), intent(inout) :: d, u,v,h
 complex(8), dimension(n-1), intent(inout) :: beta
 complex(8) :: gamm, bulge
 complex(8), dimension(2) :: l
@@ -279,17 +292,20 @@ complex(8), dimension(2,2) :: A
 integer :: i
 complex(8) :: S, C
 complex(8):: z
-double precision :: eps = 2.22e-16
+double precision :: eps, dlamch
 real:: finish, start
+
+
+eps=dlamch('e')
 
 if (n>2) then
 	! Perform the structured QR step.
 	
-	call create_bulge(d(1:2),beta(1:2),u(1:2),v(1:2),rho,bulge)
+	call cqr_create_bulge_single(d(1:2),beta(1:2),u(1:2),v(1:2),rho,bulge,h,jobh)
 	
-	call chasing(n-2,d(2:n-1),beta,u(2:n-1),v(2:n-1),bulge)
+	call cqr_chasing(n-2,d(2:n-1),beta,u(2:n-1),v(2:n-1),bulge,h,jobh)
 	
-	call delete_bulge(d(n-1:n),beta(n-2:n-1),u(n-1:n),v(n-1:n),bulge)
+	call cqr_delete_bulge_single(d(n-1:n),beta(n-2:n-1),u(n-1:n),v(n-1:n),bulge,h,jobh)
 
 else
     if (n==2) then 
@@ -314,19 +330,27 @@ else
 	call zrot(2, A(1,1), 1, A(1,2), 1, C, conjg(S))
 	call zrot(1, u(1), 1, u(2), 1, C, S)
 	call zrot(1, v(1),1,v(2), 1, C, conjg(S))
+	
+	if (jobh.eq.'y') then
+	   call zrot(1, h(1), 1, h(2), 1, C, S)
+	end if
+	
 	d(1)=A(1,1)
 	d(2)=A(2,2)
         beta(1)=0
 	end if
     endif
 endif
-end subroutine fastqr_ss_in
+end subroutine cqr_single_sweep
 !--------------------------------------------
-!SUBROUTINE fastqr6
+!SUBROUTINE cqr_single_eig_small
 !
 ! This subroutine performs a single shift structured QR algorithm, without 
 ! aggressive early deflation, to compute the eigenvalue of a matrix which is
-! the sum of a hermitian and a rank one matrix.  
+! the sum of a hermitian and a rank one matrix. Moreover, if JOBH=y
+! this subroutine computes the vector Q*H, where Q is the unitary matrix 
+! obtaied from the QR decomposition of the input matrix, and H is a vector 
+! given in input.
 !
 ! INPUT PARAMETERS
 !
@@ -340,17 +364,25 @@ end subroutine fastqr_ss_in
 !
 ! U,V  COMPLEX(8), DIMENSION(N). Vectors such that the rank one part of 
 !      the matrix is UV*.
+!
+! H    COMPLEX(8), DIMENSION(N). Arbitrary input vector.
+!
+! JOBH CHARACTER.  JOBH=y if the arbirtary vector H has to be updated,
+!		   JOB=N otherwise.
 
-recursive subroutine fastqr6(n,d,beta,u,v)
+recursive subroutine cqr_single_eig_small(n,d,beta,u,v,h,jobh)
 implicit none
 integer, intent(in)  :: n
 integer :: imin, imax ,cont,i
-complex(8), dimension(n), intent(inout) :: d, u, v
+character, intent(in):: jobh
+complex(8), dimension(n), intent(inout) :: d, u, v,h
 complex(8), dimension(n-1), intent(inout) :: beta
 complex(8), dimension(2) :: l
 complex(8) :: rho
 real(8) :: z
-double precision :: eps = 2.22e-16
+double precision :: eps, dlamch
+
+eps=dlamch('e')
 
 imax=n
 imin=1 
@@ -376,7 +408,7 @@ do while (imax-imin .gt. 0)
 	else
     		rho=l(2);
 	endif
-	call fastqr_ss_in(imax-imin+1,d(imin:imax),beta(imin:imax-1),u(imin:imax),v(imin:imax),rho)
+	call cqr_single_sweep(imax-imin+1,d(imin:imax),beta(imin:imax-1),u(imin:imax),v(imin:imax),rho,h,jobh)
 
 !Try to deflate some eigenvalue
 do while (imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
@@ -397,14 +429,14 @@ beta(i)=0
 ! compute the eigenvalues of the smallest diagonal block, 
 ! using a recursive structured QR algorithm. 
 if (i.le. (imax-imin)/2) then
-call fastqr6(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i))
+call cqr_single_eig_small(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i),h,jobh)
 do while (imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
 beta(imin)=0
 imin = imin + 1
 cont=0
 end do
 else
-call fastqr6(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax))
+call cqr_single_eig_small(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax),h,jobh)
 do while (imin.lt.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
 beta(imax-1)=0
 imax = imax - 1
@@ -424,19 +456,19 @@ cont=cont+1
 if (cont==10) then
 	call random_number(z)
 	rho=z
-	call fastqr_ss_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),rho)
+	call cqr_single_sweep(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),rho,h,jobh)
 cont=0
 end if
 
 end do
 
-end subroutine fastqr6
+end subroutine cqr_single_eig_small
 !------------------------------------------------------
 
-!SUBROUTINE fastqr12_in
+!SUBROUTINE cqr_multishift_sweep
 !
 ! This subroutine performs h steps of the structured QR algorithm, using
-! 2 shifts that are given as input, and returns a shift vector of size k.
+! h shifts that are given as input, and returns a shift vector of size k.
 !
 ! INPUT PARAMETERS
 !
@@ -451,15 +483,13 @@ end subroutine fastqr6
 ! U,V  COMPLEX(8), DIMENSION(N). Vectors such that the rank one part of 
 !      the matrix is UV*.
 !
-! RH   COMPLEX(8), DIMENSION(H). Vector that contains the input shifts.
-!
 ! H   INTEGER. Number of input shifts.
 !
 ! K   INTEGER. Number of output shifts, K>=H.
 !
-! RHRH   COMPLEX(8), DIMENSION(k). Vector that contains the output shifts.
+! RHRH   COMPLEX(8), DIMENSION(k). Vector that contains the shifts.
 
-subroutine fastqr12_in(nn,d,beta,u,v,h,k, RHRH)
+subroutine cqr_multishift_sweep(nn,d,beta,u,v,h,k, RHRH)
 implicit none
 integer, intent(in)  :: nn,k,h
 integer :: n
@@ -473,7 +503,10 @@ complex(8), dimension(3,2) :: R
 integer :: i,p
 complex(8) :: S, C
 complex(8) :: z
-double precision :: eps = 2.22e-16
+double precision :: eps, dlamch
+
+
+eps=dlamch('e')
 
 n=nn
 
@@ -481,7 +514,7 @@ if (n>3/2*k) then
 ! Perform h steps of the structured QR algorithm.
 	do p=1,h
 		rho=RHRH(p)
-		call fastqr_ss_in(n,d,beta,u,v,rho)
+		call cqr_single_sweep(n,d,beta,u,v,rho,0.0,'n')
 	end do
 	! Try to do some deflation in the final part of the matrix.
 	do while (n>1 .AND. abs(beta(n-1))<eps*(abs(d(n-1))+abs(d(n))))
@@ -490,31 +523,56 @@ if (n>3/2*k) then
         end do
         ! Perform a step of the aggressive early deflation and compute the new 
 	! shift vector.
-	call aggressive_deflation_in(n,d(1:n),beta(1:n-1),u(1:n),v(1:n),k,RHRH)
+	call cqr_aggressive_deflation(n,d(1:n),beta(1:n-1),u(1:n),v(1:n),k,RHRH)
 else
 	! If the size of the matrix is small, compute the egenvalues performing
 	! a structured QR algorithm without aggressive early deflation.
-	call fastqr6(n,d,beta,u,v)
+	call cqr_single_eig_small(n,d,beta,u,v,0.0,'n')
 	RHRH=0
 end if
-end subroutine fastqr12_in
+end subroutine cqr_multishift_sweep
 
 !-------------------------------------------------------------
 
-recursive subroutine aggressive_deflation_in (n,d,beta,u,v,w,RHO)
+!SUBROUTINE cqr_aggressive_deflation
+!
+! This subroutine performs the structured aggressive early deflation.
+!
+! INPUT PARAMETERS
+!
+! N    INTEGER. Size of the input matrix 
+!
+! D    COMPLEX(8), DIMENSION(N). Vector that contains the diagonal entries
+!      of the matrix.
+!
+! BETA COMPLEX(8), DIMENSION(N-1). Vector that contains the subdiagonal 
+!      entries of the matrix.
+!
+! U,V  COMPLEX(8), DIMENSION(N). Vectors such that the rank one part of 
+!      the matrix is UV*.
+!
+! W   INTEGER. Number of output shifts.
+!
+! RHO   COMPLEX(8), DIMENSION(k). Vector that contains the output shifts.
+
+
+recursive subroutine cqr_aggressive_deflation (n,d,beta,u,v,w,RHO)
 implicit none
 integer, intent(in)  :: n,w
 complex(8), dimension(n), intent(inout) :: d, u,v
 complex(8), dimension(n-1), intent(inout) :: beta
-complex(8), dimension(w*3/2) :: h
+complex(8), dimension(w*3/2) :: h,hatd
 complex(8), dimension (w), intent(out) :: RHO
-complex(8), dimension(:), allocatable :: hatd
 complex(8) :: S, C 
 integer :: f,i,j,K, p
 complex(8) :: l
 complex(8) :: z
 complex, dimension(2,2) :: G
-double precision :: eps = 2.22e-16
+double precision :: eps, dlamch
+
+
+
+eps=dlamch('e')
 
 K=w*3/2
 if (n.gt.K) then
@@ -523,7 +581,7 @@ if (n.gt.K) then
     ! Compute the structured Schur form of the kxk trailing principal submatrix, updating the 
     ! vector h.
 
-    call fastqr11(K, h(1:K), d(n-K+1:n),beta(n-K+1:n-1),u(n-K+1:n),v(n-K+1:n))
+    call cqr_single_eig_small(K, d(n-K+1:n),beta(n-K+1:n-1),u(n-K+1:n),v(n-K+1:n),h(1:K),'y')
 
     i=K
     j=0
@@ -561,38 +619,36 @@ if (n.gt.K) then
            end do
        end if
    end do
-allocate(hatd(i))
 ! Store the non deflated eigenvalues of the kxk trailing principal submatrix.
-hatd=d(1+n-K:i+n-K)
+hatd(1:i)=d(1+n-K:i+n-K)
 ! Bring back the matrix in Hessenberg form.
-   call Hessenberg_reduction(i,h(1:i),d(1+n-K:i+n-K),beta(n-K+1:n-K+i-1),u(1+n-K:i+n-K),v(1+n-K:i+n-K))
+   call cqr_hessenberg_reduction(i,h(1:i),d(1+n-K:i+n-K),beta(n-K+1:n-K+i-1),u(1+n-K:i+n-K),v(1+n-K:i+n-K)) 
 	beta(n-K)=h(1)
    if (i< w) then
     ! The stored eigenvalues are not enough to produce w shifts, hence perform
     ! a new aggressive deflation step. 
 
-       call aggressive_deflation_in(n-K+i,d(1:n-K+i),beta(1:n-K+i-1),u(1:n-K+i),v(1:n-K+i),w,RHO)
+       call cqr_aggressive_deflation(n-K+i,d(1:n-K+i),beta(1:n-K+i-1),u(1:n-K+i),v(1:n-K+i),w,RHO)
   else
 
   	! Store the smallest (in magnitude) w elements of hatd as shifts.
-	call sort_1(i,hatd)
+	call cqr_sort(i,hatd(1:i))
 	RHO=hatd(1:w)
-	deallocate(hatd)
 end if
 else
 ! If the size of the matrix is small, compute the egenvalues performing
 ! a structured QR algorithm without aggressive early deflation.
-call fastqr6(n,d,beta,u,v)
+call cqr_single_eig_small(n,d,beta,u,v,0.0,'n')
 RHO=0
 end if
 
 
 
-end subroutine aggressive_deflation_in
+end subroutine cqr_aggressive_deflation
 
 !--------------------------------------------------------
 
-!SUBROUTINE Hessenberg_reduction
+!SUBROUTINE cqr_hessenberg_reduction  
 !
 ! This subroutine takes in input an arbitrary vector and the structured
 ! representation of a triangular matrix that is the sum of a Hermitian
@@ -618,7 +674,7 @@ end subroutine aggressive_deflation_in
 
 
 
-subroutine Hessenberg_reduction(n,h,d,beta,u,v) 
+subroutine cqr_hessenberg_reduction(n,h,d,beta,u,v) 
 implicit none
 integer, intent(in)  :: n
 complex(8), dimension(n), intent(inout) :: d, u,v
@@ -734,282 +790,10 @@ do i=n-2,1,-1
     	
 end do
 end if
-end subroutine Hessenberg_reduction
-!---------------------------------------------------------
-!SUBROUTINE fastqr11
-!
-! This subroutine performs a single shift structured QR algorithm, without 
-! aggressive early deflation, to compute the eigenvalue of a matrix which is
-! the sum of a hermitian and a rank one matrix. Moreover this subroutine
-! computes the vector Q*H, where Q* is the unitary matrix of the Schur 
-! decomposition, and H is a vector given in input. 
-!
-! INPUT PARAMETERS
-!
-! N    INTEGER. Size of the input matrix. 
-!
-! H    COMPLEX(8), DIMENSION(N). Arbitrary input vector.
-!
-! D    COMPLEX(8), DIMENSION(N). Vector that contains the diagonal entries
-!      of the matrix.
-!
-! BETA COMPLEX(8), DIMENSION(N-1). Vector that contains the subdiagonal 
-!      entries of the matrix.
-!
-! U,V  COMPLEX(8), DIMENSION(N). Vectors such that the rank one part of 
-!      the matrix is UV*.
+end subroutine cqr_hessenberg_reduction
 
-recursive subroutine fastqr11(n,h,d,beta,u,v) 
-implicit none
-integer, intent(in)  :: n
-integer :: imin, imax, p,i,cont
-complex(8), dimension(n), intent(inout) :: d, u, v, h
-complex(8), dimension(n-1), intent(inout) :: beta
-complex(8):: rho
-real (8) :: z
-double precision :: eps = 2.22e-16
-
-
-imax=n
-imin=1 
-cont=0
-
-
-!Try to deflate some eigenvalue
-do while ( imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
-beta(imin)=0
-imin = imin + 1
-end do
-do while (imin.lt.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
-beta(imax-1)=0
-imax = imax - 1
-end do
-
-do while (imax-imin .gt. 0)
-
-	! Compute a step of the QR algorithm updating h.
-
-	
-	call fastqr11_in(imax-imin+1, h(imin:imax),d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
-
-	!Try to deflate some eigenvalue
-do while (imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
-beta(imin)=0
-imin = imin + 1
-cont=0
-end do
-do while (imin.lt.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
-beta(imax-1)=0
-imax = imax - 1
-cont=0
-end do
-	
-
-do i=imin+1,imax-2
-if (abs(beta(i))<eps*(abs(d(i))+abs(d(i+1)))) then
-beta(i)=0
-cont=0
-! If a deflation occurs in the middle of the matrix, 
-! compute the eigenvalues of the smallest diagonal block, 
-! using a recursive structured QR algorithm. 
-if (i.le. (imax-imin)/2) then
-call fastqr11(i-imin+1,h(imin:i), d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i))
-do while (imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
-beta(imin)=0
-imin = imin + 1
-end do
-else
-call fastqr11(imax-i,h(i+1:imax), d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax))
-do while (imin.lt.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
-beta(imax-1)=0
-imax = imax - 1
-end do
-end if
-end if
-end do
-cont=cont+1
-
-
-
-end do
-
-
-
-end subroutine fastqr11
-
-
-
-
-
-
-
-!--------------------------------------------------------------
-!SUBROUTINE fastqr11_in
-!
-! This subroutine performs a step of the single shift structured QR algorithm, 
-! to compute the eigenvalue of a matrix which is the sum of a hermitian and a 
-! rank one matrix. Moreover this subroutine computes the vector Q*H, where Q 
-! is the unitary matrix obtaied from the QR decomposition of the input matrix, 
-! and H is a vector given in input. 
-!
-! INPUT PARAMETERS
-!
-! N    INTEGER. Size of the input matrix. 
-!
-! H    COMPLEX(8), DIMENSION(N). Arbitrary input vector.
-!
-! D    COMPLEX(8), DIMENSION(N). Vector that contains the diagonal entries
-!      of the matrix.
-!
-! BETA COMPLEX(8), DIMENSION(N-1). Vector that contains the subdiagonal 
-!      entries of the matrix.
-!
-! U,V  COMPLEX(8), DIMENSION(N). Vectors such that the rank one part of 
-!      the matrix is UV*.
-
-subroutine fastqr11_in(n,h,d,beta,u,v)
-
-implicit none
-integer, intent(in)  :: n
-complex(8), dimension(n), intent(inout) :: d, u,v,h
-complex(8), dimension(n-1), intent(inout) :: beta
-complex(8) :: gamm
-complex(8), dimension(2) :: l
-complex(8) :: rho
-complex(8), dimension(3,2) :: R
-complex(8), dimension(2,2) :: A
-integer :: i ,p
-complex(8) :: S, C
-complex(8):: z
-real(8)::zz
-double precision :: eps = 2.22e-16
-
-
-if (n>2) then
-
-	! Compute the Wilkinson shift.
-	gamm=conjg(beta(1)-v(1)*u(2))+u(1)*v(2)
-	rho=sqrt((d(n-1)+d(n))**2-4*(d(n-1)*d(n)-(beta(n-1)*(conjg(beta(n-1)-u(n)*v(n-1))+u(n-1)*v(n)))))
-	l(1)=(d(n-1)+d(n)+rho)/2
-	l(2)=(d(n-1)+d(n)-rho)/2
-	if (abs(l(1)-d(n))<abs(l(2)-d(n))) then
-	    rho=l(1);
-	else
-    		rho=l(2);
-	endif
-	
-
-	
-	! Perform the structured QR step.
-	z=d(1)-rho
-	call zrotg(z,beta(1),C,S)
-
-	R(1,1)=d(1)
-	R(2,1)=beta(1)
-	R(1,2)=gamm
-	R(2,2)=d(2)
-	R(3,1)=0
-	R(3,2)=beta(2)
-	
-	call zrot(2, R(1,1), 3, R(2,1), 3, C, S)
-	call zrot(3, R(1,1), 1, R(1,2), 1, C, conjg(S))
-
-	d(1)=R(1,1)
-	beta(1)=R(2,1)
-	d(2)=R(2,2)
-	beta(2)=R(3,2)
-
-	call zrot(1, u(1), 1, u(2), 1, C, S)
-	call zrot(1, h(1), 1, h(2), 1, C, S)
-	call zrot(1, v(1),1,v(2), 1, C, conjg(S))	
-
-	d(1)=real(d(1)-u(1)*v(1))+(u(1)*v(1))
-	d(2)=real(d(2)-u(2)*v(2))+(u(2)*v(2))
-	
-	do i=1,n-3
-	
-    	gamm=conjg(beta(i+1)-v(i+1)*u(i+2))+u(i+1)*v(i+2)
-	z=beta(i)
-    	call zrotg(z,R(3,1),C,S)
-
-    	beta(i)=z
-	R(1,1)=d(i+1)
-	R(2,1)=beta(i+1)
-	R(1,2)=gamm
-	R(2,2)=d(i+2)
-    	R(3,1)=0
-	R(3,2)=beta(i+2)
-
-	call zrot(2, R(1,1), 3, R(2,1), 3, C, S)
-	call zrot(3, R(1,1), 1, R(1,2), 1, C, conjg(S))
-
-    	d(i+1)=R(1,1)
-    	beta(i+1)=R(2,1)
-    	d(i+2)=R(2,2)
-   	beta(i+2)=R(3,2)
-	
-	call zrot(1, u(i+1), 1, u(i+2), 1, C, S)
-	call zrot(1, h(i+1), 1, h(i+2), 1, C, S)
-	call zrot(1, v(i+1),1,v(i+2), 1, C, conjg(S))
-
-	enddo
-    	gamm=conjg(beta(n-1)-v(n-1)*u(n))+u(n-1)*v(n);
-	z=beta(n-2)
-	call zrotg(z,R(3,1),C,S)
-
-	beta(n-2)=z
-	R(1,1)=d(n-1)
-	R(2,1)=beta(n-1)
-	R(1,2)=gamm
-	R(2,2)=d(n)
-	call zrot(2, R(1,1), 3, R(2,1), 3, C, S)
-	call zrot(2, R(1,1), 1, R(1,2), 1, C, conjg(S))
-	
-
-    	d(n-1)=R(1,1)
-    	beta(n-1)=R(2,1)
-    	d(n)=R(2,2)
-  	
-
-	call zrot(1, u(n-1), 1, u(n), 1, C, S)
-	call zrot(1, h(n-1), 1, h(n), 1, C, S)
-	call zrot(1, v(n-1),1,v(n), 1, C, conjg(S))	
-
-	d(n-1)=real(d(n-1)-u(n-1)*v(n-1))+(u(n-1)*v(n-1))
-    	d(n)=real(d(n)-u(n)*v(n))+(u(n)*v(n))
-else
-    if (n==2) then 
-	gamm=conjg(beta(1)-u(2)*v(1))+u(1)*v(2)
-	
-	A(1,1)=d(1)
-	A(2,1)=beta(1)
-	A(1,2)=gamm
-	A(2,2)=d(2)
-	if (A(2,1).NE.0) then	
-	rho=sqrt((A(1,1)+A(2,2))**2-4*(A(1,1)*A(2,2)-A(2,1)*A(1,2)))
-	l(1)=(A(1,1)+A(2,2)+rho)/2
-	l(2)=(A(1,1)+A(2,2)-rho)/2
-	if (abs(l(1)-d(2))<abs(l(2)-d(2))) then
-	   d(1)=l(1);
-	else
-    		d(1)=l(2);
-	endif
-	z=A(1,1)-d(1)
-	call zrotg(z,beta(1),C,S)
-	call zrot(2, A(1,1), 2, A(2,1), 2 , C, S)
-	call zrot(2, A(1,1), 1, A(1,2), 1, C, conjg(S))
-	call zrot(1, u(1), 1, u(2), 1, C, S)
-	call zrot(1, h(1), 1, h(2), 1, C, S)
-	call zrot(1, v(1),1,v(2), 1, C, conjg(S))
-	d(1)=A(1,1)
-	d(2)=A(2,2)
-        beta(1)=0
-	end if
-    endif
-endif
-end subroutine fastqr11_in
 !------------------------------------------------------------------------------
-!SUBROUTINE sort_1
+!SUBROUTINE cqr_sort !cqr_sort
 ! This subroutine sorts an input vector in decreasing order with respect
 ! to the magnitute of its entries.  
 !
@@ -1019,7 +803,7 @@ end subroutine fastqr11_in
 !
 ! A    COMPLEX(8), DIMENSION(N). Arbitrary input vector.
 
-subroutine sort_1(n,a) 
+subroutine cqr_sort(n,a) 
 implicit none 
 integer, intent(in) :: n
 complex(8), dimension(n), intent(inout) :: a
@@ -1040,12 +824,15 @@ keepgoing=.false.
 	end if
 end do
 end do
-end subroutine sort_1
+end subroutine cqr_sort
 
 !--------------------------------------------------------------------
 
-!SUBROUTINE create_bulge
-! This subroutine creates the first bulge.
+!SUBROUTINE cqr_create_bulge_single 
+! This subroutine creates the first bulge.  Moreover, if JOBH=y
+! this subroutine updates the arbitrary vector h, using the Givens rotations
+!created during the process.
+!
 !
 ! INPUT PARAMETERS
 !
@@ -1061,10 +848,16 @@ end subroutine sort_1
 ! RHO    COMPLEX(8). Value of the shift.
 !
 ! BULGE  COMPLEX(8). Value of the bulge.
+!
+! H    COMPLEX(8), DIMENSION(N). Arbitrary input vector.
+!
+! JOBH CHARACTER.  JOBH=y if the arbirtary vector H has to be updated,
+!		   JOB=N otherwise.
 
-subroutine create_bulge(d,beta,u,v,rho,bulge)
+subroutine cqr_create_bulge_single(d,beta,u,v,rho,bulge,h,jobh)
 implicit none
-complex(8), dimension(2), intent(inout) :: d,beta,u,v
+complex(8), dimension(2), intent(inout) :: d,beta,u,v,h
+character, intent(in) :: jobh
 complex(8), intent(in):: rho
 complex(8), intent(out):: bulge
 complex(8):: z, gamm, S, C
@@ -1092,17 +885,24 @@ beta(2)=R(3,2)
 call zrot(1, u(1), 1, u(2), 1, C, S)
 call zrot(1, v(1),1,v(2), 1, C, conjg(S))
 
+if (jobh.eq.'y') then	
+	call zrot(1, h(1), 1, h(2), 1, C, S)
+end if
+
 d(1)=real(d(1)-u(1)*v(1))+(u(1)*v(1))
 d(2)=real(d(2)-u(2)*v(2))+(u(2)*v(2))
 
 bulge=R(3,1)
 
-end subroutine create_bulge
+end subroutine cqr_create_bulge_single
 
 !-------------------------------------------------------------------
 
-!SUBROUTINE delete_bulge
+!SUBROUTINE cqr_delete_bulge_single 
 ! This subroutine deletes a bulge that is in the last row of the matrix. 
+! Moreover, if JOBH=y this subroutine updates the arbitrary vector h, 
+! using the Givens rotations created during the process.
+!
 !
 ! INPUT PARAMETERS
 !
@@ -1116,10 +916,16 @@ end subroutine create_bulge
 !        entries of the rank-one vectors.
 !
 ! BULGE  COMPLEX(8). Value of the bulge.
+!
+! H    COMPLEX(8), DIMENSION(N). Arbitrary input vector.
+!
+! JOBH CHARACTER.  JOBH=y if the arbirtary vector H has to be updated,
+!		   JOB=N otherwise.
 
-subroutine delete_bulge (d,beta,u,v,bulge)
+subroutine cqr_delete_bulge_single (d,beta,u,v,bulge,h,jobh)
 implicit none
-complex(8), dimension(2), intent(inout) :: d,beta,u,v
+complex(8), dimension(2), intent(inout) :: d,beta,u,v,h
+character, intent(in)::jobh
 complex(8), intent(in):: bulge
 complex(8):: z, gamm, C, S
 complex(8), dimension(2,2) :: R
@@ -1147,12 +953,16 @@ complex(8), dimension(2,2) :: R
   	
 
 	call zrot(1, u(1), 1, u(2), 1, C, S)
-	call zrot(1, v(1),1,v(2), 1, C, conjg(S))	
+	call zrot(1, v(1),1,v(2), 1, C, conjg(S))
+	
+	if (jobh.eq.'y') then	
+	call zrot(1, h(1), 1, h(2), 1, C, S)
+	end if
 
 	d(1)=real(d(1)-u(1)*v(1))+(u(1)*v(1))
     	d(2)=real(d(2)-u(2)*v(2))+(u(2)*v(2))
 
-end subroutine delete_bulge
+end subroutine cqr_delete_bulge_single
 
 !-----------------------------------------------------------------------------------------------------------------------------------------
 
@@ -1160,7 +970,7 @@ end subroutine delete_bulge
 
 !-----------------------------------------------------------------------------------------------------------------------------------------
 
-!SUBROUTINE fastqr_ss_in_par
+!SUBROUTINE cqr_single_sweep_par
 !
 ! This subroutine performs in parallel k steps of the single shift structured 
 ! QR algorithm, using k shifts that are given as input.
@@ -1182,9 +992,9 @@ end subroutine delete_bulge
 !
 ! K    INTEGER. Number of input shifts.
 !
-! NP   INTEGER. Number of processors.
+! NP   INTEGER. Number of cores available for parallelization. 
 
-subroutine fastqr_ss_in_par(n,d,beta,u,v,rh,k,np)
+subroutine cqr_single_sweep_par(n,d,beta,u,v,rh,k,np)
 implicit none
 integer, intent(in)  :: n,k,np
 integer :: siz
@@ -1198,10 +1008,15 @@ complex(8), dimension(3,2) :: R
 integer :: i,p,q,ii,iii, qq(np)
 complex(8) :: S, C
 complex(8) :: z
-double precision :: eps = 2.22e-16
+double precision :: eps, dlamch
 complex(8), dimension(np):: bulge 
 real :: start, finish
 logical:: check=.false.
+
+
+
+
+eps=dlamch('e')
 
 siz=(n-3)/np
 
@@ -1216,14 +1031,14 @@ if (n>k*3/2) then
 	end if
 		rho=RH(p)
 		
-		call create_bulge(d(1:2),beta(1:2),u(1:2),v(1:2),rho,bulge(1))
+		call cqr_create_bulge_single(d(1:2),beta(1:2),u(1:2),v(1:2),rho,bulge(1),0.0,'n')
 
 		!$OMP PARALLEL DO
 		do q=1,p 
 		
 			qq(q)=(q-1)*(siz)+1
-			call chasing(siz-1, d(qq(q)+1:qq(q)+siz-1), beta(qq(q):qq(q)+siz-1), u(qq(q)+1:qq(q)+siz-1), &
-			v(qq(q)+1:qq(q)+siz-1),bulge(q))
+			call cqr_chasing(siz-1, d(qq(q)+1:qq(q)+siz-1), beta(qq(q):qq(q)+siz-1), u(qq(q)+1:qq(q)+siz-1), &
+			v(qq(q)+1:qq(q)+siz-1),bulge(q),0.0,'n')
 			
 			if (check) then
 			do i=qq(q),qq(q)+siz-3
@@ -1236,8 +1051,8 @@ if (n>k*3/2) then
                	!$OMP END PARALLEL DO
                	
 		do q=p,1,-1
-			call chasing(3, d(qq(q)+siz-1:qq(q)+siz+1), beta(qq(q)+siz-2:qq(q)+siz+1), u(qq(q)+siz-1:qq(q)+siz+1), &
-			v(qq(q)+siz-1:qq(q)+siz+1),bulge(q))
+			call cqr_chasing(3, d(qq(q)+siz-1:qq(q)+siz+1), beta(qq(q)+siz-2:qq(q)+siz+1), u(qq(q)+siz-1:qq(q)+siz+1), &
+			v(qq(q)+siz-1:qq(q)+siz+1),bulge(q),0.0,'n')
 			bulge(q+1)=bulge(q)
 			
 			if (check) then
@@ -1262,7 +1077,7 @@ if (n>k*3/2) then
 	end if
 
 		rho=RH(p)
- 		call create_bulge(d(1:2),beta(1:2),u(1:2),v(1:2),rho,bulge(1))
+ 		call cqr_create_bulge_single(d(1:2),beta(1:2),u(1:2),v(1:2),rho,bulge(1),0.0,'n')
 
 		
     
@@ -1270,8 +1085,8 @@ if (n>k*3/2) then
 		do q=1,np 		
 			qq(q)=(q-1)*(siz)+1
 			    
-		call chasing(siz-1, d(qq(q)+1:qq(q)+siz-1), beta(qq(q):qq(q)+siz-1), u(qq(q)+1:qq(q)+siz-1), &
-		v(qq(q)+1:qq(q)+siz-1),bulge(q))
+		call cqr_chasing(siz-1, d(qq(q)+1:qq(q)+siz-1), beta(qq(q):qq(q)+siz-1), u(qq(q)+1:qq(q)+siz-1), &
+		v(qq(q)+1:qq(q)+siz-1),bulge(q),0.0,'n')
 		
 		
 		if (check) then
@@ -1287,8 +1102,8 @@ if (n>k*3/2) then
    	
                	do q=np,1,-1
                	
-			call chasing(3, d(qq(q)+siz-1:qq(q)+siz+1), beta(qq(q)+siz-2:qq(q)+siz+1), u(qq(q)+siz-1:qq(q)+siz+1), &
-			v(qq(q)+siz-1:qq(q)+siz+1),bulge(q))
+			call cqr_chasing(3, d(qq(q)+siz-1:qq(q)+siz+1), beta(qq(q)+siz-2:qq(q)+siz+1), u(qq(q)+siz-1:qq(q)+siz+1), &
+			v(qq(q)+siz-1:qq(q)+siz+1),bulge(q),0.0,'n')
 			
 			if (check) then
 			do i=qq(q)+siz-2,qq(q)+siz-1
@@ -1300,7 +1115,8 @@ if (n>k*3/2) then
 			
 		end do 	
 	
-		call chasing(n-(qq(np)+siz+1),d(qq(np)+siz+1:n-1),beta(qq(np)+siz:n-1),u(qq(np)+siz+1:n-1),v(qq(np)+siz+1:n-1),bulge(np))
+		call cqr_chasing(n-(qq(np)+siz+1),d(qq(np)+siz+1:n-1),beta(qq(np)+siz:n-1),u(qq(np)+siz+1:n-1),v(qq(np)+siz+1:n-1), &
+		bulge(np),0.0,'n')
 		
 		if (check) then
 		do i=qq(np)+siz,n-1
@@ -1310,7 +1126,7 @@ if (n>k*3/2) then
 			end do
 		end if
 		
-		call delete_bulge(d(n-1:n),beta(n-2:n-1),u(n-1:n),v(n-1:n),bulge(np))
+		call cqr_delete_bulge_single(d(n-1:n),beta(n-2:n-1),u(n-1:n),v(n-1:n),bulge(np),0.0,'n')
 	
 		do q=np-1,1,-1
 			bulge(q+1)=bulge(q)
@@ -1326,8 +1142,8 @@ if (n>k*3/2) then
 		!$OMP PARALLEL DO
 		do q=p,np 
 			qq(q)=(q-1)*(siz)+1
-			call chasing(siz-1, d(qq(q)+1:qq(q)+siz-1), beta(qq(q):qq(q)+siz-1), u(qq(q)+1:qq(q)+siz-1), &
-			v(qq(q)+1:qq(q)+siz-1),bulge(q))
+			call cqr_chasing(siz-1, d(qq(q)+1:qq(q)+siz-1), beta(qq(q):qq(q)+siz-1), u(qq(q)+1:qq(q)+siz-1), &
+			v(qq(q)+1:qq(q)+siz-1),bulge(q),0.0,'n')
 			
 			if (check) then
 			do i=qq(q),qq(q)+siz-3
@@ -1341,8 +1157,8 @@ if (n>k*3/2) then
                	!$OMP END PARALLEL DO
             	   	
                	do q=p,np
-			call chasing(3, d(qq(q)+siz-1:qq(q)+siz+1), beta(qq(q)+siz-2:qq(q)+siz+1), u(qq(q)+siz-1:qq(q)+siz+1), &
-			v(qq(q)+siz-1:qq(q)+siz+1),bulge(q))
+			call cqr_chasing(3, d(qq(q)+siz-1:qq(q)+siz+1), beta(qq(q)+siz-2:qq(q)+siz+1), u(qq(q)+siz-1:qq(q)+siz+1), &
+			v(qq(q)+siz-1:qq(q)+siz+1),bulge(q),0.0,'n')
 			
 			if (check) then
 			do i=qq(q)+siz-2,qq(q)+siz-1
@@ -1353,8 +1169,8 @@ if (n>k*3/2) then
 			end if
 			
 		end do 	
-		call chasing(n-(qq(np)+siz+1),d(qq(np)+siz+1:n-1),beta(qq(np)+siz:n-1),u(qq(np)+siz+1:n-1),&
-		v(qq(np)+siz+1:n-1),bulge(np))
+		call cqr_chasing(n-(qq(np)+siz+1),d(qq(np)+siz+1:n-1),beta(qq(np)+siz:n-1),u(qq(np)+siz+1:n-1),&
+		v(qq(np)+siz+1:n-1),bulge(np),0.0,'n')
 		
 		if (check) then
 		do i=qq(np)+siz,n-1
@@ -1364,22 +1180,23 @@ if (n>k*3/2) then
 			end do
 		end if
 				
-		call delete_bulge(d(n-1:n),beta(n-2:n-1),u(n-1:n),v(n-1:n),bulge(np))
+		call cqr_delete_bulge_single(d(n-1:n),beta(n-2:n-1),u(n-1:n),v(n-1:n),bulge(np),0.0,'n')
 	
 		do q=np-1,p,-1
 			bulge(q+1)=bulge(q)
 		end do
 	end do
 else
-	call fastqr_ss_in(n,d,beta,u,v,rho)
+	call cqr_single_sweep(n,d,beta,u,v,rho,0.0,'n')
 end if
-end subroutine fastqr_ss_in_par
+end subroutine cqr_single_sweep_par
 !---------------------------------------------------------
 
-!SUBROUTINE fastqr12_in_par
+!SUBROUTINE cqr_multishift_sweep_par
 !
-! This subroutine performs h steps of the structured QR algorithm, using
-! 2 shifts that are given as input, and returns a shift vector of size k.
+! This subroutine performs in a parallel way h steps of the structured 
+! QR algorithm, using h shifts that are given as input, and returns a 
+! shift vector of size k.
 !
 ! INPUT PARAMETERS
 !
@@ -1394,15 +1211,15 @@ end subroutine fastqr_ss_in_par
 ! U,V  COMPLEX(8), DIMENSION(N). Vectors such that the rank one part of 
 !      the matrix is UV*.
 !
-! RH   COMPLEX(8), DIMENSION(H). Vector that contains the input shifts.
-!
 ! H   INTEGER. Number of input shifts.
 !
 ! K   INTEGER. Number of output shifts, K>=H.
 !
-! RHRH   COMPLEX(8), DIMENSION(k). Vector that contains the output shifts.
+! RHRH   COMPLEX(8), DIMENSION(k). Vector that contains the shifts.
+!
+! NP    INTEGER. Number of cores available for parallelization. 
 
-subroutine fastqr12_in_par(nn,d,beta,u,v,h,k, RHRH,np)
+subroutine cqr_multishift_sweep_par(nn,d,beta,u,v,h,k, RHRH,np)
 implicit none
 integer, intent(in)  :: nn,k,h,np
 integer :: n
@@ -1416,14 +1233,19 @@ complex(8), dimension(3,2) :: R
 integer :: i,p
 complex(8) :: S, C
 complex(8) :: z
-double precision :: eps = 2.22e-16
+double precision :: eps, dlamch
+
+
+
+
+eps=dlamch('e')
 
 n=nn
 
 if (n>3/2*k) then
 ! Perform h steps of the structured QR algorithm.
 
-	call fastqr_ss_in_par(n,d,beta,u,v,RHRH,h,np)
+	call cqr_single_sweep_par(n,d,beta,u,v,RHRH,h,np,0.0,'n')
 
 	! Try to do some deflation in the final part of the matrix.
 	do while (n>1 .AND. abs(beta(n-1))<eps*(abs(d(n-1))+abs(d(n))))
@@ -1434,23 +1256,24 @@ if (n>3/2*k) then
 	! shift vector.
 
 	
-	call aggressive_deflation_in(n,d(1:n),beta(1:n-1),u(1:n),v(1:n),k,RHRH)
+	call cqr_aggressive_deflation(n,d(1:n),beta(1:n-1),u(1:n),v(1:n),k,RHRH)
 
 else
 	! If the size of the matrix is small, compute the egenvalues performing
 	! a structured QR algorithm without aggressive early deflation.
-	call fastqr6(n,d,beta,u,v)
+	call cqr_single_eig_small(n,d,beta,u,v,0.0,'n')
 	RHRH=0
 end if
-end subroutine fastqr12_in_par
+end subroutine cqr_multishift_sweep_par
 
 !-------------------------------------------------------------------------------------------
 
-!SUBROUTINE aggressive_deflation_par
+!SUBROUTINE cqr_single_eig_aed_par
 !
 ! This subroutine computes the eigenvalues of a matrix which is the 
 ! sum  of a hermitian and a rank one matrices, using a structured single shift
-! QR algorithm with a structured aggressive early deflation.
+! QR algorithm with a structured aggressive early deflation run in a parallel 
+! way.
 !
 ! INPUT PARAMETERS
 !
@@ -1468,9 +1291,9 @@ end subroutine fastqr12_in_par
 ! K    INTEGER. Number of QR steps performed before the aggressive
 !      early deflation is applied.
 !
-! NP   INTEGER. Number of cores used for parallelization.
+! NP    INTEGER. Number of cores available for parallelization. 
 
-subroutine aggressive_deflation_par(n,d,beta,u,v,k,np)
+subroutine cqr_single_eig_aed_par(n,d,beta,u,v,k,np)
 implicit none
 integer, intent(in)  :: n
 integer, intent(inout) :: np,k
@@ -1478,7 +1301,7 @@ integer :: imin, imax ,its, cont,i
 complex(8), dimension(n), intent(inout) :: d, u, v
 complex(8), dimension(n-1), intent(inout) :: beta
 complex(8), dimension(k) :: rho
-double precision :: eps = 2.22e-16
+double precision :: eps, dlamch
 real(8):: z
 real:: finish, start
 
@@ -1487,8 +1310,13 @@ imin=1
 cont=0
 rho=0
 
+
+
+
+eps=dlamch('e')
+
 ! Compute the first shift vector, of size k, using the Aggressive early deflation.
-call aggressive_deflation_in(n,d,beta,u,v,k,rho)
+call cqr_aggressive_deflation(n,d,beta,u,v,k,rho)
 
 ! Try to do some deflation.
 do while ( imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
@@ -1500,10 +1328,6 @@ do while (imin .lt. imax .and. beta(imax-1)==0 )
 	imax = imax - 1
 	cont=0
 end do
-if (isnan(norm2(abs(beta)))) then
-print*, 'NAN'
-stop
-end if
 its=1
 do while (imax-imin .ge. 350)
 do while (imax-imin .ge. 64*np)
@@ -1518,14 +1342,14 @@ do while (imax-imin .ge. 64*np)
 				! using a structured QR algorithm without aggressive
 				! early deflation. 
 				if (i.le. (imax-imin)/2) then
-				call fastqr6(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i))
+				call cqr_single_eig_small(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i),0.0,'n')
 					do while ( imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
 					beta(imin)=0
 					imin = imin + 1
 					cont=0
 				end do
 			else
-				call fastqr6(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax))
+				call cqr_single_eig_small(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax),0.0,'n')
 					do while (imin.lt.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
 					beta(imax-1)=0
 					imax = imax - 1
@@ -1536,10 +1360,8 @@ do while (imax-imin .ge. 64*np)
 	end do
 		! Perform k steps of the structured QR algorithm using
                 ! k shifts that are given as input, and return a shift vector of size k.
-         !       call cpu_time(start)
-        call  fastqr12_in_par(imax-imin+1,d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),k,k, rho,np) 
-        !call cpu_time(finish)
-        !print'("time4=",f6.3," seconds")', finish-start
+        call  cqr_multishift_sweep_par(imax-imin+1,d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),k,k, rho,np) 
+
 		! Try to do some deflation.
 	do while (imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
 		beta(imin)=0
@@ -1560,7 +1382,7 @@ do while (imax-imin .ge. 64*np)
 		end do
 		! Perform k seps of the structured QR algorithm using
                 ! k shifts that are given as input, and return a shift vector of size k.
-                call fastqr12_in_par(imax-imin+1,d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),k,k, rho,np) 
+                call cqr_multishift_sweep_par(imax-imin+1,d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),k,k, rho,np) 
 		cont=0
 	end if
 	end do
@@ -1569,6 +1391,6 @@ do while (imax-imin .ge. 64*np)
 end do
 ! When the size of the matrix becames small, perform a structured QR algorithm
 ! without aggressive early deflation.
-call fastqr6(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
-end subroutine aggressive_deflation_par
+call cqr_single_eig_small(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),0.0,'n')
+end subroutine cqr_single_eig_aed_par
 
