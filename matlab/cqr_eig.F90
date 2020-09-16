@@ -1,4 +1,4 @@
-!
+(!
 ! This file is part of cqr_eig, a package for computing eigenvalues
 ! of hermitian-plus-rank-one matrices, with the special focuse of
 ! Chebyshev rootfinding.

@@ -14,6 +14,7 @@ d = zeros(n, 1);
 beta = ones(n-1, 1) / 2; beta(end) = 1 / sqrt(2);
 v = -p; v(end) = v(end) * sqrt(2); v = v / 2;
 u = eye(n, 1);
+d(1) = v(1);
 
 end
 
