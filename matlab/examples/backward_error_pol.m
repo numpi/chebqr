@@ -49,6 +49,10 @@ q = [q(1) / 2; q(2:n); q(n+1) / 2 ];
 q = q / norm(q);
 p = p / norm(p);
 
+if length(q) < length(p)
+    q(length(p)) = 0;
+end
+
 % Find the projection of q along p
 r = dot(p, q);
 
