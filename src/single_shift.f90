@@ -36,6 +36,7 @@ subroutine cqr_chasing(n,d,beta,u,v,bulge,h,jobh)
   complex(8) :: S, C, z
   integer :: i  
 
+
   do i=1,n-1
      gamm=conjg(beta(i+1)-v(i)*u(i+1))+u(i)*v(i+1)
      z=beta(i)
@@ -292,17 +293,17 @@ subroutine cqr_single_sweep(n,d,beta,u,v,rho,h,jobh)
   double precision :: eps, dlamch
   real:: finish, start
 
-
   eps=dlamch('e')
 
   if (n>2) then
      ! Perform the structured QR step.
+     call cqr_create_bulge_single(d(1:2),beta(1:2),u(1:2),v(1:2),rho,bulge,h(1:2),jobh)
 
-     call cqr_create_bulge_single(d(1:2),beta(1:2),u(1:2),v(1:2),rho,bulge,h,jobh)
 
-     call cqr_chasing(n-2,d(2:n-1),beta,u(2:n-1),v(2:n-1),bulge,h,jobh)
+     call cqr_chasing(n-2,d(2:n-1),beta,u(2:n-1),v(2:n-1),bulge,h(2:n-1),jobh) 
 
-     call cqr_delete_bulge_single(d(n-1:n),beta(n-2:n-1),u(n-1:n),v(n-1:n),bulge,h,jobh)
+     call cqr_delete_bulge_single(d(n-1:n),beta(n-2:n-1),u(n-1:n),v(n-1:n),bulge,h(n-1:n),jobh)
+    
 
   else
      if (n==2) then 
@@ -385,7 +386,6 @@ recursive subroutine cqr_single_eig_small(n,d,beta,u,v,h,jobh)
   imax=n
   imin=1 
   cont=0
-
   !Try to deflate some eigenvalue
   do while ( imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
      beta(imin)=0
@@ -396,7 +396,7 @@ recursive subroutine cqr_single_eig_small(n,d,beta,u,v,h,jobh)
      imax = imax - 1
   end do
   do while (imax-imin .gt. 0)
-
+  
      ! Compute a step of the QR algorithm.
      rho=sqrt((d(imax-1)+d(imax))**2-4*(d(imax-1)*d(imax)-(beta(imax-1)*(conjg(beta(imax-1)-u(imax)*v(imax-1))+u(imax-1)*v(imax)))))
      l(1)=(d(imax-1)+d(imax)+rho)/2
@@ -406,7 +406,7 @@ recursive subroutine cqr_single_eig_small(n,d,beta,u,v,h,jobh)
      else
         rho=l(2);
      endif
-     call cqr_single_sweep(imax-imin+1,d(imin:imax),beta(imin:imax-1),u(imin:imax),v(imin:imax),rho,h,jobh)
+     call cqr_single_sweep(imax-imin+1,d(imin:imax),beta(imin:imax-1),u(imin:imax),v(imin:imax),rho,h(imin:imax),jobh)
 
      !Try to deflate some eigenvalue
      do while (imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
@@ -427,14 +427,14 @@ recursive subroutine cqr_single_eig_small(n,d,beta,u,v,h,jobh)
            ! compute the eigenvalues of the smallest diagonal block, 
            ! using a recursive structured QR algorithm. 
            if (i.le. (imax-imin)/2) then
-              call cqr_single_eig_small(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i),h,jobh)
+              call cqr_single_eig_small(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i),h(imin:i),jobh)
               do while (imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
                  beta(imin)=0
                  imin = imin + 1
                  cont=0
               end do
            else
-              call cqr_single_eig_small(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax),h,jobh)
+              call cqr_single_eig_small(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax),h(i+1:imax),jobh)
               do while (imin.lt.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
                  beta(imax-1)=0
                  imax = imax - 1
@@ -451,7 +451,7 @@ recursive subroutine cqr_single_eig_small(n,d,beta,u,v,h,jobh)
      if (cont==10) then
 	call random_number(z)
 	rho=z
-	call cqr_single_sweep(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),rho,h,jobh)
+	call cqr_single_sweep(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),rho,h(imin:imax),jobh)
         cont=0
      end if
 
@@ -701,7 +701,6 @@ subroutine cqr_hessenberg_reduction(n,h,d,beta,u,v)
 	call zrotg(z,h(i+1),C,S)
         h(i)=z
         h(i+1)=0
-
         ! Transform the triangular matrix by means the previous 
         ! Givens rotation.
 	gamm=conjg(-v(i)*u(i+1))+u(i)*v(i+1)
@@ -721,54 +720,10 @@ subroutine cqr_hessenberg_reduction(n,h,d,beta,u,v)
 	beta(i+1)=R(3,2)
 
         ! Chase the bulge to bring back the matrix in Hessenberg form.
-	do j=i,n-3
-           gamm=conjg(beta(j+1)-v(j+1)*u(j+2))+u(j+1)*v(j+2)
-           z=beta(j)
-
-           call zrotg(z,R(3,1),C,S)
-
-           beta(j)=z
-           R(1,1)=d(j+1)
-           R(2,1)=beta(j+1)
-           R(1,2)=gamm
-           R(2,2)=d(j+2)
-           R(3,1)=0
-           R(3,2)=beta(j+2)
-
-           call zrot(2, R(1,1), 3, R(2,1), 3, C, S)
-           call zrot(3, R(1,1), 1, R(1,2), 1, C, conjg(S))
-
-           d(j+1)=R(1,1)
-           beta(j+1)=R(2,1)
-           d(j+2)=R(2,2)
-           beta(j+2)=R(3,2)
-
-           call zrot(1, u(j+1), 1, u(j+2), 1, C, S)
-           call zrot(1, v(j+1),1,v(j+2), 1, C, conjg(S))
-	end do
-
-    	gamm=conjg(beta(n-1)-v(n-1)*u(n))+u(n-1)*v(n);
-        z=beta(n-2)
-
-	call zrotg(z,R(3,1),C,S)
-	beta(n-2)=z
-	R(1,1)=d(n-1)
-	R(2,1)=beta(n-1)
-	R(1,2)=gamm
-	R(2,2)=d(n)
-
-	call zrot(2, R(1,1), 3, R(2,1), 3, C, S)
-	call zrot(2, R(1,1), 1, R(1,2), 1, C, conjg(S))
-
-    	d(n-1)=R(1,1)
-    	beta(n-1)=R(2,1)
-    	d(n)=R(2,2)
-
-	call zrot(1, u(n-1), 1, u(n), 1, C, S)
-	call zrot(1, v(n-1),1,v(n), 1, C, conjg(S))	
-
-	d(n-1)=real(d(n-1)-u(n-1)*v(n-1))+(u(n-1)*v(n-1))
-    	d(n)=real(d(n)-u(n)*v(n))+(u(n)*v(n))
+        
+        call cqr_chasing(n-i-1,d(i+1:n-1),beta(i:n-1),u(i+1:n-1),v(i+1:n-1),R(3,1),u(i+1:n-1),'n')
+        
+	call cqr_delete_bulge_single(d(n-1:n),beta(n-2:n-1),u(n-1:n),v(n-1:n),R(3,1),u(n-1:n),'n')
 
      end do
   end if
