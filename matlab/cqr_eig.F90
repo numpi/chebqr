@@ -73,7 +73,7 @@ subroutine mexFunction(nlhs, plhs, nrhs, prhs)
   ! the number of available processing threads. Note that we may set this too a
   ! large value for the problem at hand, but in that case cqr_eig() will adjust
   ! it automatically
-  k = MAX(20, 9 * np)
+  k = MAX(20, 6 * np)
   
   ! Prepare the allocated memory, copy the data
   allocate(d(n), beta(n-1), u(n), v(n))
