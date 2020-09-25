@@ -286,12 +286,11 @@ subroutine cqr_single_sweep(n,d,beta,u,v,rho,h,jobh)
   complex(8) :: gamm, bulge
   complex(8), dimension(2) :: l
   complex(8), intent(in) :: rho
-  complex(8), dimension(2,2) :: A
-  integer :: i
+  complex(8), dimension(2,2) :: R
   complex(8) :: S, C
   complex(8):: z
   double precision :: eps, dlamch
-  real:: finish, start
+
 
   eps=dlamch('e')
 
@@ -303,42 +302,36 @@ subroutine cqr_single_sweep(n,d,beta,u,v,rho,h,jobh)
      call cqr_chasing(n-2,d(2:n-1),beta,u(2:n-1),v(2:n-1),bulge,h(2:n-1),jobh) 
 
      call cqr_delete_bulge_single(d(n-1:n),beta(n-2:n-1),u(n-1:n),v(n-1:n),bulge,h(n-1:n),jobh)
-    
+  
+  
+  else if (n==2) then
+  	gamm=conjg(beta(1)-v(1)*u(2))+u(1)*v(2)
+  	z=d(1)-rho
+  	call zrotg(z,beta(1),C,S)
 
-  else
-     if (n==2) then 
-	gamm=conjg(beta(1)-u(2)*v(1))+u(1)*v(2)
+  	R(1,1)=d(1)
+  	R(2,1)=beta(1)
+  	R(1,2)=gamm
+  	R(2,2)=d(2)
 
-	A(1,1)=d(1)
-	A(2,1)=beta(1)
-	A(1,2)=gamm
-	A(2,2)=d(2)
-	if (A(2,1).NE.0) then	
-           gamm=sqrt((A(1,1)+A(2,2))**2-4*(A(1,1)*A(2,2)-A(2,1)*A(1,2)))
-           l(1)=(A(1,1)+A(2,2)+gamm)/2
-           l(2)=(A(1,1)+A(2,2)-gamm)/2
-           if (abs(l(1)-d(2))<abs(l(2)-d(2))) then
-              d(1)=l(1);
-           else
-              d(1)=l(2);
-           endif
-           z=A(1,1)-d(1)
-           call zrotg(z,beta(1),C,S)
-           call zrot(2, A(1,1), 2, A(2,1), 2 , C, S)
-           call zrot(2, A(1,1), 1, A(1,2), 1, C, conjg(S))
-           call zrot(1, u(1), 1, u(2), 1, C, S)
-           call zrot(1, v(1),1,v(2), 1, C, conjg(S))
 
-           if (jobh.eq.'y') then
-              call zrot(1, h(1), 1, h(2), 1, C, S)
-           end if
+  	call zrot(2, R(1,1), 2, R(2,1), 2, C, S)
+ 	call zrot(2, R(1,1), 1, R(1,2), 1, C, conjg(S))
 
-           d(1)=A(1,1)
-           d(2)=A(2,2)
-           beta(1)=0
-	end if
-     endif
-  endif
+  	d(1)=R(1,1)
+  	beta(1)=R(2,1)
+  	d(2)=R(2,2)
+  
+  	call zrot(1, u(1), 1, u(2), 1, C, S)
+  	call zrot(1, v(1),1,v(2), 1, C, conjg(S))
+
+  	if (jobh.eq.'y') then	
+     		call zrot(1, h(1), 1, h(2), 1, C, S)
+  	end if
+
+  	d(1)=real(d(1)-u(1)*v(1))+(u(1)*v(1))
+  	d(2)=real(d(2)-u(2)*v(2))+(u(2)*v(2))
+ end if
 end subroutine cqr_single_sweep
 
 
@@ -396,17 +389,12 @@ recursive subroutine cqr_single_eig_small(n,d,beta,u,v,h,jobh)
      imax = imax - 1
   end do
   do while (imax-imin .gt. 0)
+ 
   
-     ! Compute a step of the QR algorithm.
-     rho=sqrt((d(imax-1)+d(imax))**2-4*(d(imax-1)*d(imax)-(beta(imax-1)*(conjg(beta(imax-1)-u(imax)*v(imax-1))+u(imax-1)*v(imax)))))
-     l(1)=(d(imax-1)+d(imax)+rho)/2
-     l(2)=(d(imax-1)+d(imax)-rho)/2
-     if (abs(l(1)-d(imax))<abs(l(2)-d(imax))) then
-        rho=l(1);
-     else
-        rho=l(2);
-     endif
+     call cqr_wilkinson_shift(d(imax-1:imax),beta(imax-1),u(imax-1:imax),v(imax-1:imax),rho)
+
      call cqr_single_sweep(imax-imin+1,d(imin:imax),beta(imin:imax-1),u(imin:imax),v(imin:imax),rho,h(imin:imax),jobh)
+    
 
      !Try to deflate some eigenvalue
      do while (imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
@@ -456,8 +444,65 @@ recursive subroutine cqr_single_eig_small(n,d,beta,u,v,h,jobh)
      end if
 
   end do
-
 end subroutine cqr_single_eig_small
+
+!-----------------------------------------------
+
+!SUBROUTINE cqr_wilkinson shift
+!
+! This subroutine return an eigenvalue of a (structured) 2x2 matrix for the 
+! purpose of using it as a shift.
+!
+! INPUT PARAMETERS
+!
+! D    COMPLEX(8), DIMENSION(2). Vector that contains the diagonal entries
+!      of the matrix.
+!
+! BETA COMPLEX(8), DIMENSION(1). Vector that contains the subdiagonal 
+!      entry of the matrix.
+!
+! U,V  COMPLEX(8), DIMENSION(2). Vectors such that the rank one part of 
+!      the matrix is UV*.
+!
+! RHO  COMPLEX(8). Value of the output eigenvalue.
+
+
+ subroutine cqr_wilkinson_shift(d,beta,u,v,rho)
+ complex(8), dimension(2), intent(in):: d, u,v
+ complex(8), dimension(1), intent(in):: beta
+ complex(8), intent(out):: rho
+ complex(8), dimension(2):: dd, uu, vv,l
+ complex(8),dimension(1)::b
+ double precision :: eps, dlamch
+
+  eps=dlamch('e')
+  
+
+ rho=sqrt((d(1)+d(2))**2-4*(d(1)*d(2)-(beta(1)*(conjg(beta(1)-u(2)*v(1))+u(1)*v(2)))))
+ l(1)=(d(1)+d(2)+rho)/2
+ l(2)=(d(1)+d(2)-rho)/2
+ dd=d
+ uu=u
+ vv=v
+ b=beta
+ do while (abs(b(1)).ne.0)
+ 	if (abs(l(1)-dd(2))<abs(l(2)-dd(2))) then
+       		rho=l(1);
+	else
+       		rho=l(2);
+	endif
+	call cqr_single_sweep(2,dd,b,uu,vv,rho,uu,'n')
+	if(abs(b(1)).lt.eps*(abs(dd(1))+abs(dd(2)))) then
+		b(1)=0
+	end if
+ end do
+ if (abs(dd(1)-d(2))<abs(dd(2)-d(2))) then
+	rho=dd(1);
+ else
+       	rho=dd(2);
+ endif
+ end subroutine
+
 
 
 !------------------------------------------------------
@@ -731,7 +776,7 @@ end subroutine cqr_hessenberg_reduction
 
 
 !------------------------------------------------------------------------------
-!SUBROUTINE cqr_sort !cqr_sort
+!SUBROUTINE cqr_sort
 ! This subroutine sorts an input vector in decreasing order with respect
 ! to the magnitute of its entries.  
 !
