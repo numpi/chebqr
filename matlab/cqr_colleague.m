@@ -2,10 +2,11 @@ function [d, beta, u, v] = cqr_colleague(p)
 %CQR_COLLEAGUE Colleague linearization for a polynomial.
 
 % Decrease the degree, if necessary
-ll = find(p == 0, 1);
-if ~isempty(ll)
-    p = p(ll + 1:end);
+ll = 0;
+while p(ll+1) == 0
+    ll = ll + 1;
 end
+p = p(ll+1:end);
 
 n = length(p) - 1;
 p = p(2:end) ./ p(1);
