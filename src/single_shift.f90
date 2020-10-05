@@ -187,31 +187,25 @@ subroutine cqr_single_eig_aed(n,d,beta,u,v,k)
   do while (imax-imin .ge. 350)
      its=its+1
      ! Try to do some deflation.
-     do i=imin+1,imax-1
+     i=imin+1
+     do while (i.ge.imin+1 .and. i.le.imax)
         if (abs(beta(i))<eps*(abs(d(i))+abs(d(i+1)))) then
            beta(i)=0
            ! If a deflation occurs in the middle of the matrix, 
            ! compute the eigenvalues of the smallest diagonal block, 
-           ! using a structured QR algorithm without aggressive
-           ! early deflation. 
+           ! using a recursive structured QR algorithm. 
            if (i.le. (imax-imin)/2) then
               call cqr_single_eig_small(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i), u(imin:i), 'n')
-              do while (imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
-                 beta(imin)=0
-                 imin = imin + 1
-                 cont=0
-              end do
+              imin=i+1
            else
-              call cqr_single_eig_small(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax), u(imin:i),'n')
-              do while ( imin.lt.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
-                 beta(imax-1)=0
-                 imax = imax - 1
-                 cont=0
-              end do
+               call cqr_single_eig_small(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax), u(imin:i),'n')
+              imax=i
            end if
         end if
+        i=i+1
      end do
-     
+
+    
      ! Perform k steps of the structured QR algorithm using
      ! k shifts that are given as input, and return a shift vector of size k.
      call  cqr_multishift_sweep(imax-imin+1,d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),k,k, rho)
@@ -298,22 +292,22 @@ subroutine cqr_single_sweep(n,d,beta,u,v,rho,h,jobh)
      ! Perform the structured QR step.
      call cqr_create_bulge_single(d(1:2),beta(1:2),u(1:2),v(1:2),rho,bulge,h(1:2),jobh)
 
-
      call cqr_chasing(n-2,d(2:n-1),beta,u(2:n-1),v(2:n-1),bulge,h(2:n-1),jobh) 
 
      call cqr_delete_bulge_single(d(n-1:n),beta(n-2:n-1),u(n-1:n),v(n-1:n),bulge,h(n-1:n),jobh)
   
   
   else if (n==2) then
+
   	gamm=conjg(beta(1)-v(1)*u(2))+u(1)*v(2)
   	z=d(1)-rho
-  	call zrotg(z,beta(1),C,S)
-
+  	
   	R(1,1)=d(1)
   	R(2,1)=beta(1)
   	R(1,2)=gamm
   	R(2,2)=d(2)
-
+  	
+  	call zrotg(z,beta(1),C,S)
 
   	call zrot(2, R(1,1), 2, R(2,1), 2, C, S)
  	call zrot(2, R(1,1), 1, R(1,2), 1, C, conjg(S))
@@ -372,9 +366,14 @@ recursive subroutine cqr_single_eig_small(n,d,beta,u,v,h,jobh)
   complex(8), dimension(2) :: l
   complex(8) :: rho
   real(8) :: z
+  double precision,  dimension(n)::w,ww
   double precision :: eps, dlamch
 
   eps=dlamch('e')
+  
+  !open(11, file = 'w.dat')
+  !read(11, fmt = *) w
+  !close(11)
 
   imax=n
   imin=1 
@@ -389,7 +388,13 @@ recursive subroutine cqr_single_eig_small(n,d,beta,u,v,h,jobh)
      imax = imax - 1
   end do
   do while (imax-imin .gt. 0)
- 
+  
+
+  ! do i=1,n
+  !ww(i)=abs(v(i))/w(i)
+  !end do
+  
+  !print*, norm2(ww)/n
   
      call cqr_wilkinson_shift(d(imax-1:imax),beta(imax-1),u(imax-1:imax),v(imax-1:imax),rho)
 
@@ -408,7 +413,8 @@ recursive subroutine cqr_single_eig_small(n,d,beta,u,v,h,jobh)
         cont=0
      end do
 
-     do i=imin+1,imax-1
+     i=imin+1  
+     do while (i.ge.imin+1 .and. i.le.imax-1)
         if (abs(beta(i))<eps*(abs(d(i))+abs(d(i+1)))) then
            beta(i)=0
            ! If a deflation occurs in the middle of the matrix, 
@@ -416,20 +422,13 @@ recursive subroutine cqr_single_eig_small(n,d,beta,u,v,h,jobh)
            ! using a recursive structured QR algorithm. 
            if (i.le. (imax-imin)/2) then
               call cqr_single_eig_small(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i),h(imin:i),jobh)
-              do while (imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
-                 beta(imin)=0
-                 imin = imin + 1
-                 cont=0
-              end do
+              imin=i+1
            else
               call cqr_single_eig_small(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax),h(i+1:imax),jobh)
-              do while (imin.lt.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
-                 beta(imax-1)=0
-                 imax = imax - 1
-                 cont=0
-              end do
+              imax=i
            end if
         end if
+        i=i+1
      end do
 
      cont=cont+1
@@ -845,14 +844,16 @@ subroutine cqr_create_bulge_single(d,beta,u,v,rho,bulge,h,jobh)
 
   gamm=conjg(beta(1)-v(1)*u(2))+u(1)*v(2)
   z=d(1)-rho
-  call zrotg(z,beta(1),C,S)
-
+  
   R(1,1)=d(1)
   R(2,1)=beta(1)
   R(1,2)=gamm
   R(2,2)=d(2)
   R(3,1)=0
   R(3,2)=beta(2)
+  
+  call zrotg(z,beta(1),C,S)
+
 
   call zrot(2, R(1,1), 3, R(2,1), 3, C, S)
   call zrot(3, R(1,1), 1, R(1,2), 1, C, conjg(S))
@@ -1287,30 +1288,23 @@ subroutine cqr_single_eig_aed_par(n,d,beta,u,v,k,np)
 	its=its+1
  
         ! Try to do some middle deflation.
-	do i=imin+1,imax-1
-           if (abs(beta(i))<eps*(abs(d(i))+abs(d(i+1)))) then
-              beta(i)=0
-              ! If a deflation occurs in the middle of the matrix, 
-              ! compute the eigenvalues of the smallest diagonal block, 
-              ! using a structured QR algorithm without aggressive
-              ! early deflation. 
-              if (i.le. (imax-imin)/2) then
-                 call cqr_single_eig_small(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i),u(imin:i),'n')
-                 do while ( imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
-                    beta(imin)=0
-                    imin = imin + 1
-                    cont=0
-                 end do
-              else
-                 call cqr_single_eig_small(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax),u(i+1:imax),'n')
-                 do while (imin.lt.imax .and. abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))))
-                    beta(imax-1)=0
-                    imax = imax - 1
-                    cont=0
-                 end do
-              end if
+     i=imin+1
+     do while (i.ge.imin+1 .and. i.le.imax-1)
+        if (abs(beta(i))<eps*(abs(d(i))+abs(d(i+1)))) then
+           beta(i)=0
+           ! If a deflation occurs in the middle of the matrix, 
+           ! compute the eigenvalues of the smallest diagonal block, 
+           ! using a recursive structured QR algorithm. 
+           if (i.le. (imax-imin)/2) then
+              call cqr_single_eig_small(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i),u(imin:i),'n')
+              imin=i+1
+           else
+               call cqr_single_eig_small(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax),u(i+1:imax),'n')
+              imax=i
            end if
-	end do
+        end if
+        i=i+1
+     end do
  
         ! Perform k steps of the structured QR algorithm using
         ! k shifts that are given as input, and return a shift vector of size k.
