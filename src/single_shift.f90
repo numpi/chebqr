@@ -188,7 +188,7 @@ subroutine cqr_single_eig_aed(n,d,beta,u,v,k)
      its=its+1
      ! Try to do some deflation.
      i=imin+1
-     do while (i.ge.imin+1 .and. i.le.imax)
+     do while (i.ge.imin+1 .and. i.le.imax-1)
         if (abs(beta(i))<eps*(abs(d(i))+abs(d(i+1)))) then
            beta(i)=0
            ! If a deflation occurs in the middle of the matrix, 
