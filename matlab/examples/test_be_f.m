@@ -27,6 +27,7 @@ end
 be_fastqr = backward_error_pol(p(end:-1:1), e, digts);
 be_eig    = backward_error_pol(p(end:-1:1), e2, digts);
 be_eignb  = backward_error_pol(p(end:-1:1), e2nb, digts);
+
 deg = length(p) - 1;
 
 end
