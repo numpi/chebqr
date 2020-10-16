@@ -78,7 +78,8 @@ end subroutine cqr_chasing
 !
 ! This subroutine computes the eigenvalues of a matrix which is the 
 ! sum  of a hermitian and a rank one matrix, using a structured single shift
-! QR algorithm.
+! QR algorithm. If JOBBW=y a check for the backward stability is provided. 
+!
 !
 ! INPUT PARAMETERS
 !
@@ -96,33 +97,43 @@ end subroutine cqr_chasing
 ! K    INTEGER. Number of QR steps performed before the aggressive
 !      early deflation is applied.
 !
-! NP    INTEGER. Number of cores available for parallelization.           
-subroutine cqr_single_eig(n,d,beta,u,v,k,np)
+! NP    INTEGER. Number of cores available for parallelization.   
+!
+! BW    REAL(8). Quantity that controls the bacward stability  
+!
+! JOBBW CHARACTER.  JOBBW=y if the control of bacward stability is requested,
+!		    JOB=n otherwise.      
+subroutine cqr_single_eig(n,d,beta,u,v,k,np,bw,jobbw)
   implicit none
   
   integer, intent(in)  :: n,np,k
   integer:: npnp,kk
   complex(8), dimension(n), intent(inout) :: d, u, v
   complex(8), dimension(n-1), intent(inout) :: beta
+  real(8), intent(out):: bw
+  character, intent(in):: jobbw
 
   npnp=np
-  kk=k 
+  kk=k
+  if (jobbw.eq.'y') then 
+  bw=0.0
+  end if
   if(n.lt.350)then
      ! Perform the structured QR algorithm without aggressive early
      ! deflation; note that we are passing a reference to u as the
      ! parameter h; since the last parameter is 'n', this won't be
      ! referenced. 
-     call cqr_single_eig_small(n, d, beta, u, v, u, 'n')
+     call cqr_single_eig_small(n, d, beta, u, v, u, 'n',bw,jobbw)
   else
      ! Perform the structured QR algorithm with aggressive early
      ! deflation
      if (np.eq.1) then
 
-	call cqr_single_eig_aed(n,d,beta,u,v,k) 
+	call cqr_single_eig_aed(n,d,beta,u,v,k,bw,jobbw) 
      else
 	! Perform the structured QR algorithm with aggressive early
 	! deflation in a parallel way.
-	call cqr_single_eig_aed_par(n,d,beta,u,v,kk,npnp) 
+	call cqr_single_eig_aed_par(n,d,beta,u,v,kk,npnp,bw,jobbw) 
      end if
   end if
 end subroutine cqr_single_eig
@@ -132,7 +143,8 @@ end subroutine cqr_single_eig
 !
 ! This subroutine computes the eigenvalues of a matrix which is the 
 ! sum  of a hermitian and a rank one matrices, using a structured single shift
-! QR algorithm with a structured aggressive early deflation.
+! QR algorithm with a structured aggressive early deflation. 
+! If JOBBW=y a check for the backward stability is provided. 
 !
 ! INPUT PARAMETERS
 !
@@ -149,8 +161,13 @@ end subroutine cqr_single_eig
 !
 ! K    INTEGER. Number of QR steps performed before the aggressive
 !      early deflation is applied.
+!
+! BW    REAL(8). Quantity that controls the bacward stability  
+!
+! JOBBW CHARACTER.  JOBBW=y if the control of bacward stability is requested,
+!		    JOB=n otherwise. 
 
-subroutine cqr_single_eig_aed(n,d,beta,u,v,k)
+subroutine cqr_single_eig_aed(n,d,beta,u,v,k,bw,jobbw)
   implicit none
   
   integer, intent(in)  :: n,k
@@ -161,6 +178,8 @@ subroutine cqr_single_eig_aed(n,d,beta,u,v,k)
   double precision :: eps, dlamch 
   real(8):: z
   real:: start, finish
+  real(8), intent(inout):: bw
+  character, intent(in):: jobbw
 
   eps=dlamch('e')
 
@@ -170,7 +189,7 @@ subroutine cqr_single_eig_aed(n,d,beta,u,v,k)
   rho=0
 
   ! Compute the first shift vector, of size k, using the Aggressive early deflation.
-  call cqr_aggressive_deflation(n,d,beta,u,v,k,rho)  
+  call cqr_aggressive_deflation(n,d,beta,u,v,k,rho,bw,jobbw)  
 
   ! Try to do some deflation.
   do while ( imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
@@ -185,6 +204,14 @@ subroutine cqr_single_eig_aed(n,d,beta,u,v,k)
 
   its=1
   do while (imax-imin .ge. 350)
+  if (jobbw.eq.'y') then	
+   do i = imin, imax-1
+     bw=max(abs(v(i+1))*abs(u(i)),bw)
+     bw=max(abs(v(i))*abs(u(i+1)),bw)
+     bw=max(abs(v(i))*abs(u(i)),bw)
+  end do
+  bw=max(abs(v(imax))*abs(u(imax)),bw)
+  end if
      its=its+1
      ! Try to do some deflation.
      i=imin+1
@@ -195,10 +222,10 @@ subroutine cqr_single_eig_aed(n,d,beta,u,v,k)
            ! compute the eigenvalues of the smallest diagonal block, 
            ! using a recursive structured QR algorithm. 
            if (i.le. (imax-imin)/2) then
-              call cqr_single_eig_small(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i), u(imin:i), 'n')
+              call cqr_single_eig_small(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i), u(imin:i), 'n',bw,jobbw)
               imin=i+1
            else
-               call cqr_single_eig_small(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax), u(imin:i),'n')
+               call cqr_single_eig_small(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax), u(imin:i),'n',bw,jobbw)
               imax=i
            end if
         end if
@@ -208,7 +235,7 @@ subroutine cqr_single_eig_aed(n,d,beta,u,v,k)
     
      ! Perform k steps of the structured QR algorithm using
      ! k shifts that are given as input, and return a shift vector of size k.
-     call  cqr_multishift_sweep(imax-imin+1,d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),k,k, rho)
+     call  cqr_multishift_sweep(imax-imin+1,d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),k,k, rho,bw,jobbw)
 
      ! Try to do some deflation.
      do while ( imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
@@ -231,14 +258,14 @@ subroutine cqr_single_eig_aed(n,d,beta,u,v,k)
         end do
         ! Perform k seps of the structured QR algorithm using
         ! k shifts that are given as input, and return a shift vector of size k.
-        call cqr_multishift_sweep(imax-imin+1,d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),k,k, rho) 
+        call cqr_multishift_sweep(imax-imin+1,d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),k,k, rho,bw,jobbw) 
         cont=0
      end if
   end do
   
   ! When the size of the matrix becames small, perform a structured QR algorithm
   ! without aggressive early deflation.
-  call cqr_single_eig_small(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax), u(imin:imax), 'n')
+  call cqr_single_eig_small(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax), u(imin:imax), 'n',bw,jobbw)
   
 end subroutine cqr_single_eig_aed
 
@@ -337,7 +364,7 @@ end subroutine cqr_single_sweep
 ! the sum of a hermitian and a rank one matrix. Moreover, if JOBH=y
 ! this subroutine computes the vector Q*H, where Q is the unitary matrix 
 ! obtaied from the QR decomposition of the input matrix, and H is a vector 
-! given in input.
+! given in input. If JOBBW=y a check for the backward stability is provided. 
 !
 ! INPUT PARAMETERS
 !
@@ -356,13 +383,20 @@ end subroutine cqr_single_sweep
 !
 ! JOBH CHARACTER.  JOBH=y if the arbirtary vector H has to be updated,
 !		   JOB=N otherwise.
-recursive subroutine cqr_single_eig_small(n,d,beta,u,v,h,jobh)
+!
+! BW    REAL(8). Quantity that controls the bacward stability  
+!
+! JOBBW CHARACTER.  JOBBW=y if the control of bacward stability is requested,
+!		    JOB=n otherwise. 
+
+recursive subroutine cqr_single_eig_small(n,d,beta,u,v,h,jobh,bw,jobbw)
   implicit none
   integer, intent(in)  :: n
   integer :: imin, imax ,cont,i
-  character, intent(in):: jobh
+  character, intent(in):: jobh,jobbw
   complex(8), dimension(n), intent(inout) :: d, u, v, h
   complex(8), dimension(n-1), intent(inout) :: beta
+  real(8), intent (inout)::bw
   complex(8), dimension(2) :: l
   complex(8) :: rho
   real(8) :: z
@@ -389,12 +423,14 @@ recursive subroutine cqr_single_eig_small(n,d,beta,u,v,h,jobh)
   end do
   do while (imax-imin .gt. 0)
   
-
-  ! do i=1,n
-  !ww(i)=abs(v(i))/w(i)
-  !end do
-  
-  !print*, norm2(ww)/n
+   if (jobbw.eq.'y') then	
+   do i = imin, imax-1
+     bw=max(abs(v(i+1))*abs(u(i)),bw)
+     bw=max(abs(v(i))*abs(u(i+1)),bw)
+     bw=max(abs(v(i))*abs(u(i)),bw)
+  end do
+  bw=max(abs(v(imax))*abs(u(imax)),bw)
+  end if
   
      call cqr_wilkinson_shift(d(imax-1:imax),beta(imax-1),u(imax-1:imax),v(imax-1:imax),rho)
 
@@ -421,10 +457,10 @@ recursive subroutine cqr_single_eig_small(n,d,beta,u,v,h,jobh)
            ! compute the eigenvalues of the smallest diagonal block, 
            ! using a recursive structured QR algorithm. 
            if (i.le. (imax-imin)/2) then
-              call cqr_single_eig_small(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i),h(imin:i),jobh)
+              call cqr_single_eig_small(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i),h(imin:i),jobh,bw,jobbw)
               imin=i+1
            else
-              call cqr_single_eig_small(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax),h(i+1:imax),jobh)
+              call cqr_single_eig_small(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax),h(i+1:imax),jobh,bw,jobbw)
               imax=i
            end if
         end if
@@ -509,6 +545,7 @@ end subroutine cqr_single_eig_small
 !
 ! This subroutine performs h steps of the structured QR algorithm, using
 ! h shifts that are given as input, and returns a shift vector of size k.
+! If JOBBW=y a check for the backward stability is provided. 
 !
 ! INPUT PARAMETERS
 !
@@ -528,7 +565,13 @@ end subroutine cqr_single_eig_small
 ! K   INTEGER. Number of output shifts, K>=H.
 !
 ! RHRH   COMPLEX(8), DIMENSION(k). Vector that contains the shifts.
-subroutine cqr_multishift_sweep(nn,d,beta,u,v,h,k, RHRH)
+!
+! BW    REAL(8). Quantity that controls the bacward stability  
+!
+! JOBBW CHARACTER.  JOBBW=y if the control of bacward stability is requested,
+!		    JOB=n otherwise. 
+
+subroutine cqr_multishift_sweep(nn,d,beta,u,v,h,k, RHRH,bw,jobbw)
   implicit none
   
   integer, intent(in)  :: nn,k,h
@@ -544,6 +587,8 @@ subroutine cqr_multishift_sweep(nn,d,beta,u,v,h,k, RHRH)
   complex(8) :: S, C
   complex(8) :: z
   double precision :: eps, dlamch
+  real(8), intent(inout):: bw
+  character, intent(in):: jobbw
 
   eps=dlamch('e')
 
@@ -562,11 +607,11 @@ subroutine cqr_multishift_sweep(nn,d,beta,u,v,h,k, RHRH)
      end do
      ! Perform a step of the aggressive early deflation and compute the new 
      ! shift vector.
-     call cqr_aggressive_deflation(n,d(1:n),beta(1:n-1),u(1:n),v(1:n),k,RHRH)
+     call cqr_aggressive_deflation(n,d(1:n),beta(1:n-1),u(1:n),v(1:n),k,RHRH,bw,jobbw)
   else
      ! If the size of the matrix is small, compute the egenvalues performing
      ! a structured QR algorithm without aggressive early deflation.
-     call cqr_single_eig_small(n,d,beta,u,v,u,'n')
+     call cqr_single_eig_small(n,d,beta,u,v,u,'n',bw,jobbw)
      RHRH=0
   end if
 end subroutine cqr_multishift_sweep
@@ -576,6 +621,7 @@ end subroutine cqr_multishift_sweep
 !SUBROUTINE cqr_aggressive_deflation
 !
 ! This subroutine performs the structured aggressive early deflation.
+! If JOBBW=y a check for the backward stability is provided. 
 !
 ! INPUT PARAMETERS
 !
@@ -593,7 +639,13 @@ end subroutine cqr_multishift_sweep
 ! W   INTEGER. Number of output shifts.
 !
 ! RHO   COMPLEX(8), DIMENSION(k). Vector that contains the output shifts.
-recursive subroutine cqr_aggressive_deflation (n,d,beta,u,v,w,RHO)
+!
+! BW    REAL(8). Quantity that controls the bacward stability  
+!
+! JOBBW CHARACTER.  JOBBW=y if the control of bacward stability is requested,
+!		    JOB=n otherwise. 
+
+recursive subroutine cqr_aggressive_deflation (n,d,beta,u,v,w,RHO,bw,jobbw)
   implicit none
   
   integer, intent(in)  :: n,w
@@ -607,6 +659,8 @@ recursive subroutine cqr_aggressive_deflation (n,d,beta,u,v,w,RHO)
   complex(8) :: z
   complex, dimension(2,2) :: G
   double precision :: eps, dlamch
+  real(8), intent(inout):: bw
+  character, intent(in):: jobbw
 
 
 
@@ -619,7 +673,7 @@ recursive subroutine cqr_aggressive_deflation (n,d,beta,u,v,w,RHO)
      ! Compute the structured Schur form of the kxk trailing principal submatrix, updating the 
      ! vector h.
 
-     call cqr_single_eig_small(K, d(n-K+1:n),beta(n-K+1:n-1),u(n-K+1:n),v(n-K+1:n),h(1:K),'y')
+     call cqr_single_eig_small(K, d(n-K+1:n),beta(n-K+1:n-1),u(n-K+1:n),v(n-K+1:n),h(1:K),'y',bw,jobbw)
 
      i=K
      j=0
@@ -665,7 +719,7 @@ recursive subroutine cqr_aggressive_deflation (n,d,beta,u,v,w,RHO)
      if (i< w) then
         ! The stored eigenvalues are not enough to produce w shifts, hence perform
         ! a new aggressive deflation step. 
-        call cqr_aggressive_deflation(n-K+i,d(1:n-K+i),beta(1:n-K+i-1),u(1:n-K+i),v(1:n-K+i),w,RHO)
+        call cqr_aggressive_deflation(n-K+i,d(1:n-K+i),beta(1:n-K+i-1),u(1:n-K+i),v(1:n-K+i),w,RHO,bw,jobbw)
      else
   	! Store the smallest (in magnitude) w elements of hatd as shifts.
 	call cqr_sort(i,hatd(1:i))
@@ -674,7 +728,7 @@ recursive subroutine cqr_aggressive_deflation (n,d,beta,u,v,w,RHO)
   else
      ! If the size of the matrix is small, compute the egenvalues performing
      ! a structured QR algorithm without aggressive early deflation.
-     call cqr_single_eig_small(n,d,beta,u,v,u,'n')
+     call cqr_single_eig_small(n,d,beta,u,v,u,'n',bw,jobbw)
      RHO=0
   end if
 
@@ -1159,7 +1213,8 @@ end subroutine cqr_single_sweep_par
 !
 ! This subroutine performs in a parallel way h steps of the structured 
 ! QR algorithm, using h shifts that are given as input, and returns a 
-! shift vector of size k.
+! shift vector of size k. If JOBBW=y a check for the backward stability 
+! is provided. 
 !
 ! INPUT PARAMETERS
 !
@@ -1181,7 +1236,13 @@ end subroutine cqr_single_sweep_par
 ! RHRH   COMPLEX(8), DIMENSION(k). Vector that contains the shifts.
 !
 ! NP    INTEGER. Number of cores available for parallelization. 
-subroutine cqr_multishift_sweep_par(nn,d,beta,u,v,h,k, RHRH,np)
+!
+! BW    REAL(8). Quantity that controls the bacward stability  
+!
+! JOBBW CHARACTER.  JOBBW=y if the control of bacward stability is requested,
+!		    JOB=n otherwise. 
+
+subroutine cqr_multishift_sweep_par(nn,d,beta,u,v,h,k, RHRH,np,bw,jobbw)
   implicit none
   
   integer, intent(in)  :: nn,k,h,np
@@ -1197,6 +1258,8 @@ subroutine cqr_multishift_sweep_par(nn,d,beta,u,v,h,k, RHRH,np)
   complex(8) :: S, C
   complex(8) :: z
   double precision :: eps, dlamch
+  real(8), intent(inout):: bw
+  character, intent(in):: jobbw
 
   eps=dlamch('e')
 
@@ -1214,11 +1277,11 @@ subroutine cqr_multishift_sweep_par(nn,d,beta,u,v,h,k, RHRH,np)
      
      ! Perform a step of the aggressive early deflation and compute the new 
      ! shift vector.
-     call cqr_aggressive_deflation(n,d(1:n),beta(1:n-1),u(1:n),v(1:n),k,RHRH)
+     call cqr_aggressive_deflation(n,d(1:n),beta(1:n-1),u(1:n),v(1:n),k,RHRH,bw,jobbw)
   else
      ! If the size of the matrix is small, compute the egenvalues performing
      ! a structured QR algorithm without aggressive early deflation.
-     call cqr_single_eig_small(n,d,beta,u,v,u,'n')
+     call cqr_single_eig_small(n,d,beta,u,v,u,'n',bw,jobbw)
      
      RHRH=0
   end if
@@ -1230,7 +1293,7 @@ end subroutine cqr_multishift_sweep_par
 ! This subroutine computes the eigenvalues of a matrix which is the 
 ! sum  of a hermitian and a rank one matrices, using a structured single shift
 ! QR algorithm with a structured aggressive early deflation run in a parallel 
-! way.
+! way. If JOBBW=y a check for the backward stability is provided. 
 !
 ! INPUT PARAMETERS
 !
@@ -1249,7 +1312,13 @@ end subroutine cqr_multishift_sweep_par
 !      early deflation is applied.
 !
 ! NP    INTEGER. Number of cores available for parallelization. 
-subroutine cqr_single_eig_aed_par(n,d,beta,u,v,k,np)
+!
+! BW    REAL(8). Quantity that controls the bacward stability  
+!
+! JOBBW CHARACTER.  JOBBW=y if the control of bacward stability is requested,
+!		    JOB=n otherwise. 
+
+subroutine cqr_single_eig_aed_par(n,d,beta,u,v,k,np,bw,jobbw)
   implicit none
   integer, intent(in)  :: n
   integer, intent(inout) :: np,k
@@ -1260,6 +1329,8 @@ subroutine cqr_single_eig_aed_par(n,d,beta,u,v,k,np)
   double precision :: eps, dlamch
   real(8):: z
   real:: finish, start
+  real(8), intent(inout):: bw
+  character, intent(in):: jobbw
 
   imax=n
   imin=1 
@@ -1269,7 +1340,7 @@ subroutine cqr_single_eig_aed_par(n,d,beta,u,v,k,np)
   eps=dlamch('e')
 
   ! Compute the first shift vector, of size k, using the Aggressive early deflation.
-  call cqr_aggressive_deflation(n,d,beta,u,v,k,rho)
+  call cqr_aggressive_deflation(n,d,beta,u,v,k,rho,bw,jobbw)
 
   ! Try to do some deflation.
   do while ( imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
@@ -1284,6 +1355,15 @@ subroutine cqr_single_eig_aed_par(n,d,beta,u,v,k,np)
   its=1
   do while (imax-imin .ge. 350)
      do while (imax-imin .ge. 64*np)
+     
+   if (jobbw.eq.'y') then	
+   do i = imin, imax-1
+     bw=max(abs(v(i+1))*abs(u(i)),bw)
+     bw=max(abs(v(i))*abs(u(i+1)),bw)
+     bw=max(abs(v(i))*abs(u(i)),bw)
+  end do
+  bw=max(abs(v(imax))*abs(u(imax)),bw)
+  end if
 
 	its=its+1
  
@@ -1296,10 +1376,10 @@ subroutine cqr_single_eig_aed_par(n,d,beta,u,v,k,np)
            ! compute the eigenvalues of the smallest diagonal block, 
            ! using a recursive structured QR algorithm. 
            if (i.le. (imax-imin)/2) then
-              call cqr_single_eig_small(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i),u(imin:i),'n')
+              call cqr_single_eig_small(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i),u(imin:i),'n',bw,jobbw)
               imin=i+1
            else
-               call cqr_single_eig_small(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax),u(i+1:imax),'n')
+               call cqr_single_eig_small(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax),u(i+1:imax),'n',bw,jobbw)
               imax=i
            end if
         end if
@@ -1308,7 +1388,7 @@ subroutine cqr_single_eig_aed_par(n,d,beta,u,v,k,np)
  
         ! Perform k steps of the structured QR algorithm using
         ! k shifts that are given as input, and return a shift vector of size k.
-        call  cqr_multishift_sweep_par(imax-imin+1,d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),k,k, rho,np) 
+        call  cqr_multishift_sweep_par(imax-imin+1,d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),k,k, rho,np,bw,jobbw) 
 
         ! Try to do some deflation.
 	do while (imin.lt.imax .and. abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))))
@@ -1330,7 +1410,8 @@ subroutine cqr_single_eig_aed_par(n,d,beta,u,v,k,np)
            end do
            ! Perform k seps of the structured QR algorithm using
            ! k shifts that are given as input, and return a shift vector of size k.
-           call cqr_multishift_sweep_par(imax-imin+1,d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),k,k, rho,np) 
+           call cqr_multishift_sweep_par(imax-imin+1,d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),k,k, &
+           rho,np,bw,jobbw) 
            cont=0
 	end if
      end do
@@ -1340,6 +1421,6 @@ subroutine cqr_single_eig_aed_par(n,d,beta,u,v,k,np)
   
   ! When the size of the matrix becames small, perform a structured QR algorithm
   ! without aggressive early deflation.
-  call cqr_single_eig_small(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),u(imin:imax),'n')
+  call cqr_single_eig_small(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax),u(imin:imax),'n',bw,jobbw)
 end subroutine cqr_single_eig_aed_par
 
