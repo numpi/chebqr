@@ -16,10 +16,11 @@ subroutine mexFunction(nlhs, plhs, nrhs, prhs)
   logical :: mxIsDouble
   mwPointer mxGetPr, mxGetPi, mxCreateDoubleMatrix
   integer nrhs, nlhs, its
+  character :: jobbw
   character(256) :: buffer
   integer n, i, k, np, omp_get_max_threads
   complex*16, allocatable :: d(:), beta(:), u(:), v(:)
-  double precision :: tmp, mxGetScalar
+  double precision :: tmp, mxGetScalar, bw
 
   ! Check arguments
   if (nrhs .lt. 4 .or. nrhs .gt. 5) then
@@ -82,13 +83,23 @@ subroutine mexFunction(nlhs, plhs, nrhs, prhs)
   call mxCopyPtrToComplex16(mxGetPr(prhs(2)), mxGetPi(prhs(2)), beta, n-1)	
   call mxCopyPtrToComplex16(mxGetPr(prhs(3)), mxGetPi(prhs(3)), u, n)	
   call mxCopyPtrToComplex16(mxGetPr(prhs(4)), mxGetPi(prhs(4)), v, n)
+
+  if (nlhs .gt. 1) then
+    jobbw = 'y'
+  end if
   
-  call cqr_single_eig(n, d, beta, u, v, k, np)
+  call cqr_single_eig(n, d, beta, u, v, k, np, bw, jobbw)
 
   ! Save the computed eigenvalues  
   plhs(1) = mxCreateDoubleMatrix(n, 1, 1)
   
   call mxCopyComplex16ToPtr(d, mxGetPr(plhs(1)), mxGetPi(plhs(1)), n)
+
+  ! Save the upper bound for the backward error amplification
+  if (nlhs .ge. 2) then
+    plhs(2) = mxCreateDoubleMatrix(1, 1, 0)
+    call mxCopyReal8ToPtr(bw, mxGetPr(plhs(2)), 1)
+  endif
   
   deallocate(d, beta, u, v)
 end subroutine mexFunction

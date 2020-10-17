@@ -37,13 +37,13 @@ w = w(:);
 % Interpolate Q
 v = [ w(end:-1:1); w(2:n) ];
 
-if d <= 16
+%if d <= 16
     q = real(fft(v)) / n;
-else
-    ru = exp(1i * (0 : 2*n-1) ./ n * pi);
-    V = vander(ru);
-    q = real(V' * v / n); q = q(end:-1:1);
-end
+%else
+%    ru = exp(1i * (0 : 2*n-1) ./ n * pi);
+%    V = vander(ru);
+%    q = real(V' * v / n); q = q(end:-1:1);
+%end
 
 q = [q(1) / 2; q(2:n); q(n+1) / 2 ];
 q = q / norm(q);
