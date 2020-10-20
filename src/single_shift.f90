@@ -118,6 +118,7 @@ subroutine cqr_single_eig(n,d,beta,u,v,k,np,bw,jobbw)
   if (jobbw.eq.'y') then 
   bw=0.0
   end if
+  
   if(n.lt.350)then
      ! Perform the structured QR algorithm without aggressive early
      ! deflation; note that we are passing a reference to u as the
@@ -204,13 +205,12 @@ subroutine cqr_single_eig_aed(n,d,beta,u,v,k,bw,jobbw)
 
   its=1
   do while (imax-imin .ge. 350)
-  if (jobbw.eq.'y') then	
-   do i = imin, imax-1
-     bw=max(abs(v(i+1))*abs(u(i)),bw)
-     bw=max(abs(v(i))*abs(u(i+1)),bw)
-     bw=max(abs(v(i))*abs(u(i)),bw)
+    if (jobbw.eq.'y') then
+    bw=max(norm2(abs(u(imin:imin+2)))*norm2(abs(v(imin:imin+1))),bw)
+   do i = imin+1, imax-2
+   bw=max(norm2(abs(u(i:i+2)))*norm2(abs(v(i-1:i+1))),bw)
   end do
-  bw=max(abs(v(imax))*abs(u(imax)),bw)
+  bw=max(norm2(abs(u(imax-1:imax)))*norm2(abs(v(imax-2:imax))),bw)
   end if
      its=its+1
      ! Try to do some deflation.
@@ -423,13 +423,16 @@ recursive subroutine cqr_single_eig_small(n,d,beta,u,v,h,jobh,bw,jobbw)
   end do
   do while (imax-imin .gt. 0)
   
-   if (jobbw.eq.'y') then	
-   do i = imin, imax-1
-     bw=max(abs(v(i+1))*abs(u(i)),bw)
-     bw=max(abs(v(i))*abs(u(i+1)),bw)
-     bw=max(abs(v(i))*abs(u(i)),bw)
+    if (jobbw.eq.'y') then
+    if (imax-imin .ge. 3) then
+   bw=max(norm2(abs(u(imin:imin+2)))*norm2(abs(v(imin:imin+1))),bw)
+   do i = imin+1, imax-2
+   bw=max(norm2(abs(u(i:i+2)))*norm2(abs(v(i-1:i+1))),bw)
   end do
-  bw=max(abs(v(imax))*abs(u(imax)),bw)
+  bw=max(norm2(abs(u(imax-1:imax)))*norm2(abs(v(imax-2:imax))),bw)
+  else 
+  bw=max(norm2(abs(u(imin:imax)))*norm2(abs(v(imin:imax))),bw)
+  end if
   end if
   
      call cqr_wilkinson_shift(d(imax-1:imax),beta(imax-1),u(imax-1:imax),v(imax-1:imax),rho)
@@ -1355,15 +1358,15 @@ subroutine cqr_single_eig_aed_par(n,d,beta,u,v,k,np,bw,jobbw)
   its=1
   do while (imax-imin .ge. 350)
      do while (imax-imin .ge. 64*np)
-     
-   if (jobbw.eq.'y') then	
-   do i = imin, imax-1
-     bw=max(abs(v(i+1))*abs(u(i)),bw)
-     bw=max(abs(v(i))*abs(u(i+1)),bw)
-     bw=max(abs(v(i))*abs(u(i)),bw)
-  end do
-  bw=max(abs(v(imax))*abs(u(imax)),bw)
-  end if
+ 
+    if (jobbw.eq.'y') then
+    bw=max(norm2(abs(u(imin:imin+2)))*norm2(abs(v(imin:imin+1))),bw)
+    do i = imin+1, imax-2
+    bw=max(norm2(abs(u(i:i+2)))*norm2(abs(v(i-1:i+1))),bw)
+    end do
+    bw=max(norm2(abs(u(imax-1:imax)))*norm2(abs(v(imax-2:imax))),bw)
+    end if
+ 
 
 	its=its+1
  
