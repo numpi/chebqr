@@ -16,11 +16,11 @@ subroutine mexFunction(nlhs, plhs, nrhs, prhs)
   logical :: mxIsDouble
   mwPointer mxGetPr, mxGetPi, mxCreateDoubleMatrix
   integer nrhs, nlhs, its
-  character :: jobbw
+  character :: jobbw, jobiter
   character(256) :: buffer
   integer n, i, k, np, omp_get_max_threads
   complex*16, allocatable :: d(:), beta(:), u(:), v(:)
-  double precision :: tmp, mxGetScalar, bw
+  double precision :: tmp, mxGetScalar, bw, its_x
 
   ! Check arguments
   if (nrhs .lt. 4 .or. nrhs .gt. 5) then
@@ -86,9 +86,17 @@ subroutine mexFunction(nlhs, plhs, nrhs, prhs)
 
   if (nlhs .gt. 1) then
     jobbw = 'y'
+  else
+    jobbw = 'n'
+  end if
+
+  if (nlhs .gt. 2) then
+    jobiter = 'y'
+  else
+    jobiter = 'n'
   end if
   
-  call cqr_single_eig(n, d, beta, u, v, k, np, bw, jobbw)
+  call cqr_single_eig(n, d, beta, u, v, k, np, bw, jobbw, its, jobiter)
 
   ! Save the computed eigenvalues  
   plhs(1) = mxCreateDoubleMatrix(n, 1, 1)
@@ -99,7 +107,14 @@ subroutine mexFunction(nlhs, plhs, nrhs, prhs)
   if (nlhs .ge. 2) then
     plhs(2) = mxCreateDoubleMatrix(1, 1, 0)
     call mxCopyReal8ToPtr(bw, mxGetPr(plhs(2)), 1)
-  endif
+  end if
+
+  ! Save the number of iterations
+  if (nlhs .ge. 3) then
+    its_x = its
+    plhs(3) = mxCreateDoubleMatrix(1, 1, 0)
+    call mxCopyReal8ToPtr(its_x, mxGetPr(plhs(3)), 1)
+  end if
   
   deallocate(d, beta, u, v)
 end subroutine mexFunction

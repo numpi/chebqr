@@ -1,11 +1,11 @@
 %
-% Per compilare il mex file backward_error_pol_mp.c, che fa il conto
-% dell'errore all'indietro in multiprecisione, è necessario installare i
-% pacchetti libmpfr-dev, libmpc-dev, e poi:
-%
-% mex backward_error_pol_mp.c -lmpc -lmpfr -lgmp
+% To compile backward_error_pol_mp.c, libmpfr-dev and libmpc-dev requires,
+% and you should run the command:
+%   mex backward_error_pol_mp.c -lmpc -lmpfr -lgmp
 
 addpath ..
+
+rng(12345);
 
 % Random polynomial, just to test
 randpoly100 = chebfun([ randn(100, 1) ; 1], 'coeffs');
@@ -40,8 +40,9 @@ for j = 1 : length(fncts)
     fname = fncts{j}{1};
     
     mp_required = fncts{j}{3};
-    [be_fastqr, be_eig, be_eignb, deg, p, bw] = test_be_f(f, mp_required);    
+    [be_fastqr, be_eig, be_eignb, deg, p, bw, its, nrmp] = test_be_f(f, mp_required);    
     
-    fprintf('$%s$ & $%d$ & $%s$ &  $%s$ & $%s$ & $%s$ \\\\ \n', ...
-        fname, deg, format_number(be_fastqr), format_number(be_eig), format_number(be_eignb), format_number(bw));
+    fprintf('$%s$ & $%d$ & $%s$ &  $%s$ & $%s$ & $%s$ & $%s$ & $%d$ \\\\ \n', ...
+        fname, deg, format_number(be_fastqr), format_number(be_eig), ...
+        format_number(be_eignb), format_number(bw), format_number(nrmp), its);
 end

@@ -1,4 +1,4 @@
-function [be_fastqr, be_eig, be_eignb, deg, p, bw] = test_be_f(f, mp_required)
+function [be_fastqr, be_eig, be_eignb, deg, p, bw, its, nrmp] = test_be_f(f, mp_required)
 %TEST_BE_F 
 
 g=chebfun(f);
@@ -8,7 +8,9 @@ p=p(end:-1:1)';
 [d,beta,u,v] = cqr_colleague(p);
 n=length(d) + 1;
 
-[e, bw] = cqr_eig(d,beta,u,v, 1);
+nrmp = norm(u) * norm(v);
+
+[e, bw, its] = cqr_eig(d,beta,u,v, 1);
 
 % Dense QR
 H = diag(ones(1, n-2), 1) + diag(ones(1,n-2), -1); H = H / 2;

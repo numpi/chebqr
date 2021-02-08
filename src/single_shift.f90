@@ -21,7 +21,7 @@
 !
 ! H    COMPLEX(8), DIMENSION(N). Arbitrary input vector.
 !
-! JOBH CHARACTER.  JOBH=y if the arbirtary vector H has to be updated,
+! JOBH CHARACTER.  JOBH=y if the arbitrary vector H has to be updated,
 !		   JOB=N otherwise.
 subroutine cqr_chasing(n,d,beta,u,v,bulge,h,jobh)
   implicit none
