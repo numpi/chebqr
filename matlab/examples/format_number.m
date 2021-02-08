@@ -8,7 +8,7 @@ else
     
     f = f * 10^(-exponent);
     
-    s = sprintf('%2.2f \\cdot 10^{%d}', f, exponent);
+    s = sprintf('\\num{%2.1fe%d}', f, exponent);
 end
 
  
