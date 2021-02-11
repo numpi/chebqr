@@ -21,7 +21,7 @@
 !
 ! H    COMPLEX(8), DIMENSION(N). Arbitrary input vector.
 !
-! JOBH CHARACTER.  JOBH=y if the arbitrary vector H has to be updated,
+! JOBH CHARACTER.  JOBH=y if the arbirtary vector H has to be updated,
 !		   JOB=N otherwise.
 subroutine cqr_chasing(n,d,beta,u,v,bulge,h,jobh)
   implicit none
@@ -554,26 +554,33 @@ end subroutine cqr_single_eig_small
  complex(8), dimension(2), intent(in):: d, u,v
  complex(8), dimension(1), intent(in):: beta
  complex(8), intent(out):: rho
+ complex(8) :: c,delta
  complex(8), dimension(2):: dd, uu, vv,l
  complex(8),dimension(1)::b
  double precision :: eps, dlamch
 
   eps=dlamch('e')
+ 
+  rho = -0.5 * (d(1)+d(2))
+  c = d(1)*d(2)-beta(1)*(conjg(beta(1)-u(2)*v(1))+u(1)*v(2))
   
+  delta = sqrt(rho*rho-c)
 
- rho=sqrt((d(1)+d(2))**2-4*(d(1)*d(2)-(beta(1)*(conjg(beta(1)-u(2)*v(1))+u(1)*v(2)))))
- l(1)=(d(1)+d(2)+rho)/2
- l(2)=(d(1)+d(2)-rho)/2
+  l(1) = -rho+delta
+  l(2) = -rho-delta
+
+
  dd=d
  uu=u
  vv=v
  b=beta
- do while (abs(b(1)).ne.0)
- 	if (abs(l(1)-dd(2))<abs(l(2)-dd(2))) then
+  	if (abs(l(1)-d(2))<abs(l(2)-d(2))) then
        		rho=l(1);
 	else
        		rho=l(2);
 	endif
+ 
+ do while (abs(b(1)).ne.0)
 	call cqr_single_sweep(2,dd,b,uu,vv,rho,uu,'n')
 	if(abs(b(1)).lt.eps*(abs(dd(1))+abs(dd(2)))) then
 		b(1)=0
