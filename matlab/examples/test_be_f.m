@@ -10,7 +10,7 @@ n=length(d) + 1;
 
 nrmp = norm(u) * norm(v);
 
-[e, bw, its] = cqr_eig(d,beta,u,v, 1);
+[e, bw, its] = cqr_eig(d, beta, u, v, 1);
 
 % Dense QR
 H = diag(ones(1, n-2), 1) + diag(ones(1,n-2), -1); H = H / 2;
