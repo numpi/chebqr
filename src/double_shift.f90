@@ -1,4 +1,48 @@
-!----------------------------------------------------
+!--------------------------------------------------
+!SUBROUTINE cqr_double_eig
+!
+! This subroutine computes the eigenvalues of a matrix which is the 
+! sum  of a hermitian and a rank one matrices, using a structured double shift
+! QR algorithm with a structured aggressive early deflation. 
+! If JOBITER=y the number of iterations is stored. 
+!
+! INPUT PARAMETERS
+!
+! N    INTEGER. Size of the input matrix 
+!
+! D    REAL(8), DIMENSION(N). Vector that contains the diagonal entries
+!      of the matrix.
+!
+! BETA REAL(8), DIMENSION(N-1). Vector that contains the subdiagonal 
+!      entries of the matrix.
+!
+! U,V  REAL(8), DIMENSION(N). Vectors such that the rank one part of 
+!      the matrix is UV*.
+!
+! K    INTEGER. Number of QR steps performed before the aggressive
+!      early deflation is applied.
+!
+! ITER  INTEGER. Number of iterations required for convergence. 
+!
+! JOBITER CHARACTER.  JOBITER=y if the number of iterations is requested,
+!		      JOBITER=n otherwise. 
+! If JOBITER=y the number of iterations is stored. 
+subroutine cqr_double_eig(n, d, beta, u, v, iter, jobiter)
+  implicit none
+  
+  integer, intent(in) :: n
+  character, intent(in) :: jobiter
+  integer, intent(out) :: iter
+  real(8), dimension(n), intent(inout) :: d, u, v
+  real(8), dimension(n-1), intent(inout) :: beta
+  
+  if (jobiter .eq. 'y') then
+    iter = 0
+  end if
+  
+  call cqr_fastfastqr_ds(n, d, beta, u, v, iter, jobiter)
+  
+end subroutine
 
 !SUBROUTINE cqr_fastfastqr_ds
 !
@@ -19,10 +63,12 @@
 ! U,V  COMPLEX(8), DIMENSION(N). Vectors such that the rank one part of 
 !      the matrix is UV*.
 
-recursive subroutine cqr_fastfastqr_ds(n,d,beta,u,v)
+recursive subroutine cqr_fastfastqr_ds(n,d,beta,u,v,iter,jobiter)
 implicit none
 integer, intent(in)  :: n
 integer :: imin, imax ,cont,i
+integer, intent(inout) :: iter
+character, intent(in) :: jobiter
 real(8), dimension(n), intent(inout) :: d, u, v
 real(8), dimension(n-1), intent(inout) :: beta
 real(8) :: eps = 2.22e-16
@@ -61,8 +107,11 @@ end do
 
 do while (imax-imin .gt. 1)
 
-! Compute a step of the double shuft QR algorithm.
+! Compute a step of the double shift QR algorithm.
 call cqr_fastqr6_ds_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
+if (jobiter .eq. 'y') then
+  iter = iter + 1
+end if
 
 !Try to deflate some eigenvalue
 do while ((abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))).and. imin.le.imax).or. &
@@ -90,6 +139,9 @@ cont=0
 else
 beta(imax-2)=0
 call cqr_fastqr6_ds_in(2, d(imax-1:imax), beta(imax-1:imax-1), u(imax-1:imax), v(imax-1:imax))
+if (jobiter .eq. 'y') then
+  iter = iter + 1
+end if
 imax = imax - 2
 cont=0
 end if
@@ -102,14 +154,14 @@ do i=imin+1,imax-1
 if (abs(beta(i))<eps*(abs(d(i))+abs(d(i+1)))) then
 beta(i)=0
 if (i.le. (imax-imin)/2) then
-call cqr_fastfastqr_ds(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i))
+call cqr_fastfastqr_ds(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i), iter, jobiter)
 do while (abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))).and. imin.le.imax)
 beta(imin)=0
 imin = imin + 1
 cont=0
 end do
 else
-call cqr_fastfastqr_ds(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax))
+call cqr_fastfastqr_ds(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax), iter, jobiter)
 do while (abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))).and.imin.le.imax)
 beta(imax-1)=0
 imax = imax - 1
@@ -120,7 +172,7 @@ end if
 end do
 
 cont=cont+1
-! If after some QR iteration there is not delation, perform a structured
+! If after some QR iteration there is not deflation, perform a structured
 ! QR step using a random shift vector.
 if (cont==10) then
  call fastqr7_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
@@ -129,6 +181,9 @@ end if
 
 end do
 call cqr_fastqr6_ds_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
+if (jobiter .eq. 'y') then
+  iter = iter + 1
+end if
 
 end subroutine cqr_fastfastqr_ds
 !------------------------------------

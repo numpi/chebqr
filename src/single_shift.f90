@@ -102,7 +102,7 @@ end subroutine cqr_chasing
 !
 ! BW    REAL(8). Quantity that controls the bacward stability  
 !
-! JOBBW CHARACTER.  JOBBW=y if the control of bacward stability is requested,
+! JOBBW CHARACTER.  JOBBW=y if the control of backward stability is requested,
 !		    JOBW=n otherwise.    
 ! ITER  INTEGER. Number of iterations required for convergence. 
 !
