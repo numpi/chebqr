@@ -142,7 +142,6 @@ end subroutine
 !
 ! U,V  COMPLEX(8), DIMENSION(N). Vectors such that the rank one part of
 !      the matrix is UV*.
-
 recursive subroutine cqr_fastfastqr_ds(n,d,beta,u,v,iter,jobiter)
   implicit none
   integer, intent(in)  :: n
@@ -151,7 +150,9 @@ recursive subroutine cqr_fastfastqr_ds(n,d,beta,u,v,iter,jobiter)
   character, intent(in) :: jobiter
   real(8), dimension(n), intent(inout) :: d, u, v
   real(8), dimension(n-1), intent(inout) :: beta
-  real(8) :: eps = 2.22e-16
+  real(8) :: eps, dlamch
+
+  eps = dlamch('e')
 
   imax=n
   imin=1
@@ -175,37 +176,28 @@ recursive subroutine cqr_fastfastqr_ds(n,d,beta,u,v,iter,jobiter)
     end if
 
     do i=imin+1,imax-1
-! If a deflation occurs in the middle of the matrix,
-! compute the eigenvalues of the smallest diagonal block,
-! using a recursive structured QR algorithm.
+    ! If a deflation occurs in the middle of the matrix,
+    ! compute the eigenvalues of the smallest diagonal block,
+    ! using a recursive structured QR algorithm.
       if (abs(beta(i))<eps*(abs(d(i))+abs(d(i+1)))) then
-        beta(i)=0
+        beta(i)=0.d0
         if ( (i.le. (imax-imin)/2)) then
           call cqr_fastfastqr_ds(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i), iter, jobiter)
-          do while (abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))).and. imin.le.imax)
-            beta(imin)=0
-            imin = imin + 1
-            cont=0
-          end do
+          imin = i+1
         else
           call cqr_fastfastqr_ds(imax-i, d(i+1:imax), beta(i+1:imax-1), u(i+1:imax), v(i+1:imax), iter, jobiter)
-          do while (abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))).and.imin.le.imax)
-            beta(imax-1)=0
-            imax = imax - 1
-            cont=0
-          end do
+          imax = i
         end if
       end if
     end do
 
     cont=cont+1
-! If after some QR iteration there is not deflation, perform a structured
-! QR step using a random shift vector.
+    ! If after some QR iteration there is not deflation, perform a structured
+    ! QR step using a random shift vector.
     if (cont==10) then
       call fastqr7_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
       cont=0
     end if
-
   end do
 
   if (imax .gt. imin) then
