@@ -44,6 +44,86 @@ subroutine cqr_double_eig(n, d, beta, u, v, iter, jobiter)
 
 end subroutine
 
+!SUBROUTINE cqr_check_deflation
+!
+! Check for top and bottom deflation in the matrix, and adjust the imin and 
+! imax integers accordingly.
+!
+!  INPUT PARAMETERS
+!
+! N    INTEGER. Size of the input matrix.
+!
+! D    COMPLEX(8), DIMENSION(N). Vector that contains the diagonal entries
+!      of the matrix.
+!
+! BETA COMPLEX(8), DIMENSION(N-1). Vector that contains the subdiagonal
+!      entries of the matrix.
+!
+! U,V  COMPLEX(8), DIMENSION(N). Vectors such that the rank one part of
+!      the matrix is UV*.
+subroutine cqr_check_deflation(n, d, beta, u, v, imin, imax, count)
+  implicit none
+
+  integer, intent(in) :: n
+  integer, intent(out) :: count
+  integer, intent(inout) :: imin, imax
+  real(8), intent(inout) :: d(n), beta(n-1), u(n), v(n)
+  real(8) ::  eps, dlamch
+  logical :: deflation_performed
+
+  count = 0
+  eps = dlamch('e')
+  deflation_performed = .true.
+
+  ! This cycle keeps going as long as at least one deflation is performed. 
+  do while (deflation_performed)
+    deflation_performed = .false.
+
+    ! 1x1 top deflation
+    if (imin .lt. imax) then
+      if (abs(beta(imin)) .le. eps * (abs(d(imin)) + abs(d(imin+1)))) then        
+        beta(imin) = 0.d0
+        deflation_performed = .true.
+        count = count + 1
+        imin = imin + 1
+      end if
+    end if
+
+    ! 2x2 top deflation
+    if (imin + 1 .lt. imax) then
+      if (abs(beta(imin+1)) .le. eps * (abs(d(imin+1)) + abs(d(imin+2)))) then        
+        beta(imin+1) = 0.d0
+        call cqr_fastqr6_ds_in(2, d(imin:imin+1), beta(imin:imin), u(imin:imin+1), v(imin:imin+1))
+        imin = imin + 2
+        deflation_performed = .true.
+        count = count + 2
+      end if
+    end if
+
+    ! 1x1 bottom deflation
+    if ((imin .gt. 1) .and. (imin .lt. imax)) then
+      if (abs(beta(imax-1)) .le. eps * (abs(d(imax-1)) + abs(d(imax)))) then
+        beta(imax-1) = 0.d0
+        deflation_performed = .true.
+        count = count + 1
+        imax = imax - 1        
+      end if
+    end if
+
+    ! ! 2x2 bottom deflation
+    if ((imin .gt. 2) .and. (imin + 1 .lt. imax)) then
+      if (abs(beta(imax-2)) .le. eps * (abs(d(imax-2)) + abs(d(imax-1)))) then
+        beta(imax-2) = 0.d0
+        call cqr_fastqr6_ds_in(2, d(imax-1:imax), beta(imax-1:imax-1), u(imax-1:imax), v(imax-1:imax))
+        deflation_performed = .true.
+        count = count + 2        
+        imax = imax - 2
+      end if
+    end if
+  end do
+  
+end subroutine
+
 !SUBROUTINE cqr_fastfastqr_ds
 !
 ! This subroutine performs a double shift structured QR algorithm, without
@@ -66,7 +146,7 @@ end subroutine
 recursive subroutine cqr_fastfastqr_ds(n,d,beta,u,v,iter,jobiter)
   implicit none
   integer, intent(in)  :: n
-  integer :: imin, imax ,cont,i
+  integer :: imin, imax , cont, i, deflated_count
   integer, intent(inout) :: iter
   character, intent(in) :: jobiter
   real(8), dimension(n), intent(inout) :: d, u, v
@@ -77,75 +157,22 @@ recursive subroutine cqr_fastfastqr_ds(n,d,beta,u,v,iter,jobiter)
   imin=1
   cont=0
 
-!Try to deflate some eigenvalue
-  do while ((abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))).and. imin.le.imax).or. &
-    abs(beta(imin+1))<eps*(abs(d(imin+1))+abs(d(imin+2))).and. imin+1.le.imax)
-
-    if (abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1)))) then
-      beta(imin)=0
-      imin = imin + 1
-    else
-      beta(imin+1)=0
-      call cqr_fastqr6_ds_in(2, d(imin:imin+1), beta(imin:imin), u(imin:imin+1), v(imin:imin+1))
-      imin = imin + 2
-    end if
-  end do
-
-  do while (abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))).and.imin.le.imax.or. &
-    abs(beta(imax-2))<eps*(abs(d(imax-2))+abs(d(imax-1))).and.imin.le.imax-1)
-
-
-    if (abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax)))) then
-      beta(imax-1)=0
-      imax = imax - 1
-    else
-      beta(imax-2)=0
-      call cqr_fastqr6_ds_in(2, d(imax-1:imax), beta(imax-1:imax-1), u(imax-1:imax), v(imax-1:imax))
-      imax = imax - 2
-    end if
-  end do
+  ! Try to deflate some eigenvalue
+  call cqr_check_deflation(n, d, beta, u, v, imin, imax, deflated_count)
 
   do while (imax-imin .gt. 1)
 
-! Compute a step of the double shift QR algorithm.
+    ! Compute a step of the double shift QR algorithm.
     call cqr_fastqr6_ds_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
     if (jobiter .eq. 'y') then
       iter = iter + 1
     end if
 
 !Try to deflate some eigenvalue
-    do while ((abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))).and. imin.le.imax).or. &
-      abs(beta(imin+1))<eps*(abs(d(imin+1))+abs(d(imin+2))).and. imin+1.le.imax)
-
-
-      if (abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1)))) then
-        beta(imin)=0
-        imin = imin + 1
-        cont=0
-      else
-        beta(imin+1)=0
-        call cqr_fastqr6_ds_in(2, d(imin:imin+1), beta(imin:imin), u(imin:imin+1), v(imin:imin+1))
-        imin = imin + 2
-        cont=0
-      end if
-    end do
-    do while (abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax))).and.imin.le.imax.or. &
-      abs(beta(imax-2))<eps*(abs(d(imax-2))+abs(d(imax-1))).and.imin.le.imax-1)
-
-      if (abs(beta(imax-1))<eps*(abs(d(imax-1))+abs(d(imax)))) then
-        beta(imax-1)=0
-        imax = imax - 1
-        cont=0
-      else
-        beta(imax-2)=0
-        call cqr_fastqr6_ds_in(2, d(imax-1:imax), beta(imax-1:imax-1), u(imax-1:imax), v(imax-1:imax))
-        if (jobiter .eq. 'y') then
-          iter = iter + 1
-        end if
-        imax = imax - 2
-        cont=0
-      end if
-    end do
+    call cqr_check_deflation(n, d, beta, u, v, imin, imax, deflated_count)
+    if (deflated_count .gt. 0) then
+      cont = 0
+    end if
 
     do i=imin+1,imax-1
 ! If a deflation occurs in the middle of the matrix,
@@ -153,7 +180,7 @@ recursive subroutine cqr_fastfastqr_ds(n,d,beta,u,v,iter,jobiter)
 ! using a recursive structured QR algorithm.
       if (abs(beta(i))<eps*(abs(d(i))+abs(d(i+1)))) then
         beta(i)=0
-        if (i.le. (imax-imin)/2) then
+        if ( (i.le. (imax-imin)/2)) then
           call cqr_fastfastqr_ds(i-imin+1, d(imin:i), beta(imin:i-1), u(imin:i), v(imin:i), iter, jobiter)
           do while (abs(beta(imin))<eps*(abs(d(imin))+abs(d(imin+1))).and. imin.le.imax)
             beta(imin)=0
@@ -180,9 +207,12 @@ recursive subroutine cqr_fastfastqr_ds(n,d,beta,u,v,iter,jobiter)
     end if
 
   end do
-  call cqr_fastqr6_ds_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
-  if (jobiter .eq. 'y') then
-    iter = iter + 1
+
+  if (imax .gt. imin) then
+    call cqr_fastqr6_ds_in(imax-imin+1, d(imin:imax), beta(imin:imax-1), u(imin:imax), v(imin:imax))
+    if (jobiter .eq. 'y') then
+      iter = iter + 1
+    end if
   end if
 
 end subroutine cqr_fastfastqr_ds

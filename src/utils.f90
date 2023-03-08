@@ -76,15 +76,15 @@ subroutine cqr_colleague(n, p, d, beta, u, v)
   integer :: n
   complex(8) :: d(1:n), beta(1:n-1), u(1:n), v(1:n), p(1:n+1)
 
-  d = cmplx(0.d0, 0.d0)
-  beta = cmplx(.5d0, 0.d0)
+  d = dcmplx(0.d0, 0.d0)
+  beta = dcmplx(.5d0, 0.d0)
   beta(n-1) = 1.d0 / dsqrt(2.d0)
 
   v = -p(2:n+1) / p(1);
   v(n) = v(n) * dsqrt(2.d0)
   v = v / 2.d0
 
-  u = cmplx(0.d0, 0.d0)
+  u = dcmplx(0.d0, 0.d0)
   u(1) = 1
 
   d(1) = v(1)
@@ -113,10 +113,10 @@ subroutine cqr_roots_real(n, p, x)
   integer :: n, i
   real(8) :: p(1:n+1), M(2,2), c, s, rt1r, rt1i, rt2r, rt2i
   complex(8) :: x(1:n)
-  real(8), allocatable :: beta(:), u(:), v(:), d(:)
+  real(8), allocatable, dimension(:) :: d, beta, u, v
   integer, parameter :: k = 15
 
-  allocate(beta(n-1), u(n), v(n), d(n))
+  allocate(d(n), beta(n-1), u(n), v(n))
 
   call cqr_colleague_real(n, p, d, beta, u, v)
   call cqr_double_eig(n, d, beta, u, v, 0, 'n')
@@ -125,15 +125,20 @@ subroutine cqr_roots_real(n, p, x)
   i = 1
 
   do while (i .le. n)
-    if ((i .lt. n) .and. (beta(i) .ne. 0)) then
-      M(1,1) = d(i)
-      M(1,2) = beta(i) - u(i+1) * v(i) + u(i) * v(i+1)
-      M(2,1) = beta(i)
-      M(2,2) = d(i+1)
-      call dlanv2(M(1,1), M(1,2), M(2,1), M(2,2), rt1r, rt1i, rt2r, rt2i, c, s)
-      x(i) = dcmplx(rt1r, rt1i)
-      x(i+1) = dcmplx(rt2r, rt2i)
-      i = i + 2
+    if (i .lt. n) then
+      if (beta(i) .ne. 0) then
+        M(1,1) = d(i)
+        M(1,2) = beta(i) - u(i+1) * v(i) + u(i) * v(i+1)
+        M(2,1) = beta(i)
+        M(2,2) = d(i+1)
+        call dlanv2(M(1,1), M(1,2), M(2,1), M(2,2), rt1r, rt1i, rt2r, rt2i, c, s)
+        x(i) = dcmplx(rt1r, rt1i)
+        x(i+1) = dcmplx(rt2r, rt2i)
+        i = i + 2
+      else
+        x(i) = dcmplx(d(i), 0.d0)
+        i = i + 1
+      end if
     else
       x(i) = dcmplx(d(i), 0.d0)
       i = i + 1
