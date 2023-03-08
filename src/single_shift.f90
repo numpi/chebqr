@@ -195,7 +195,6 @@ subroutine cqr_single_eig_aed(n,d,beta,u,v,k,bw,jobbw,iter,jobiter)
   complex(8), dimension(k) :: rho
   double precision :: eps, dlamch
   real(8):: z
-  real:: start, finish
   real(8), intent(inout):: bw
   character, intent(in):: jobbw
   character, intent(in):: jobiter
@@ -329,7 +328,6 @@ subroutine cqr_single_sweep(n,d,beta,u,v,rho,h,jobh)
   complex(8), dimension(n), intent(inout) :: d, u,v,h
   complex(8), dimension(n-1), intent(inout) :: beta
   complex(8) :: gamm, bulge
-  complex(8), dimension(2) :: l
   complex(8), intent(in) :: rho
   complex(8), dimension(2,2) :: R
   complex(8) :: S, C
@@ -428,14 +426,11 @@ recursive subroutine cqr_single_eig_small(n,d,beta,u,v,h,jobh,bw,jobbw,iter,jobi
   complex(8), dimension(n), intent(inout) :: d, u, v, h
   complex(8), dimension(n-1), intent(inout) :: beta
   real(8), intent (inout)::bw
-  complex(8), dimension(2) :: l
   complex(8) :: rho
   real(8) :: z
-  double precision,  dimension(n)::w,ww
   double precision :: eps, dlamch
   character, intent(in):: jobiter
   integer, intent(inout):: iter
-
 
   eps=dlamch('e')
 
@@ -641,13 +636,8 @@ subroutine cqr_multishift_sweep(nn,d,beta,u,v,h,k, RHRH,bw,jobbw,iter,jobiter)
   complex(8), dimension(k), intent(inout) :: RHRH
   complex(8), dimension(nn), intent(inout) :: d, u,v
   complex(8), dimension(nn-1), intent(inout) :: beta
-  complex(8), dimension(nn-1) :: gamm
-  complex(8), dimension(2) :: l
   complex(8) :: rho
-  complex(8), dimension(3,2) :: R
-  integer :: i,p
-  complex(8) :: S, C
-  complex(8) :: z
+  integer :: p
   double precision :: eps, dlamch
   real(8), intent(inout):: bw
   character, intent(in):: jobbw
@@ -658,7 +648,7 @@ subroutine cqr_multishift_sweep(nn,d,beta,u,v,h,k, RHRH,bw,jobbw,iter,jobiter)
 
   n=nn
 
-  if (n>3/2*k) then
+  if (n > 3*k/2) then
     ! Perform h steps of the structured QR algorithm.
     do p=1,h
       rho=RHRH(p)
@@ -727,24 +717,21 @@ recursive subroutine cqr_aggressive_deflation (n,d,beta,u,v,w,RHO,bw,jobbw,iter,
   integer, intent(in)  :: n,w
   complex(8), dimension(n), intent(inout) :: d, u,v
   complex(8), dimension(n-1), intent(inout) :: beta
-  complex(8), dimension(w*3/2) :: h,hatd
+  complex(8), dimension((w*3)/2) :: h,hatd
   complex(8), dimension (w), intent(out) :: RHO
   complex(8) :: S, C
-  integer :: f,i,j,K, p
+  integer :: f,i,j,K
   complex(8) :: l
   complex(8) :: z
-  complex, dimension(2,2) :: G
   double precision :: eps, dlamch
   real(8), intent(inout):: bw
   character, intent(in):: jobbw
   character, intent(in):: jobiter
   integer, intent(inout):: iter
 
-
-
   eps=dlamch('e')
 
-  K=w*3/2
+  K=(w*3)/2
   if (n.gt.K) then
     h=0
     h(1)=beta(n-K)
@@ -847,9 +834,8 @@ subroutine cqr_hessenberg_reduction(n,h,d,beta,u,v)
   complex(8), dimension(n-1), intent(out) :: beta
   complex(8), dimension(n), intent(inout) :: h
   complex(8), dimension(3,2) :: R
-  integer :: i,j,p
+  integer :: i
   complex(8) :: C,S
-  complex(8), dimension(2,2) :: G
   complex(8) :: z,gamm
   if (n>1) then
     ! Annihilate the last component of the arbitrary vector.
@@ -1114,16 +1100,10 @@ subroutine cqr_single_sweep_par(n,d,beta,u,v,rh,k,np,iter,jobiter)
   complex(8), dimension(k), intent(inout) :: RH
   complex(8), dimension(n), intent(inout) :: d, u,v
   complex(8), dimension(n-1), intent(inout) :: beta
-  complex(8), dimension(n-1) :: gamm
-  complex(8), dimension(2) :: l
   complex(8) :: rho
-  complex(8), dimension(3,2) :: R
-  integer :: i,p,q,ii,iii, qq(np)
-  complex(8) :: S, C
-  complex(8) :: z
+  integer :: i,p,q, qq(np)
   double precision :: eps, dlamch
   complex(8), dimension(np):: bulge
-  real :: start, finish
   logical:: check=.false.
   character, intent(in):: jobiter
   integer, intent(inout):: iter
@@ -1133,7 +1113,7 @@ subroutine cqr_single_sweep_par(n,d,beta,u,v,rh,k,np,iter,jobiter)
 
   siz=(n-3)/np
 
-  if (n>k*3/2) then
+  if (n > (3*k)/2) then
     do p=1,np-1
       if (modulo(p,10).eq.0)then
         check=.true.
@@ -1356,13 +1336,6 @@ subroutine cqr_multishift_sweep_par(nn,d,beta,u,v,h,k, RHRH,np,bw,jobbw,iter,job
   complex(8), dimension(k), intent(inout) :: RHRH
   complex(8), dimension(nn), intent(inout) :: d, u,v
   complex(8), dimension(nn-1), intent(inout) :: beta
-  complex(8), dimension(nn-1) :: gamm
-  complex(8), dimension(2) :: l
-  complex(8) :: rho
-  complex(8), dimension(3,2) :: R
-  integer :: i,p
-  complex(8) :: S, C
-  complex(8) :: z
   double precision :: eps, dlamch
   real(8), intent(inout):: bw
   character, intent(in):: jobbw
@@ -1373,7 +1346,7 @@ subroutine cqr_multishift_sweep_par(nn,d,beta,u,v,h,k, RHRH,np,bw,jobbw,iter,job
 
   n=nn
 
-  if (n>3/2*k) then
+  if (n > (3*k)/2) then
     ! Perform h steps of the structured QR algorithm.
     call cqr_single_sweep_par(n,d,beta,u,v,RHRH,h,np,iter,jobiter)
 
@@ -1442,7 +1415,6 @@ subroutine cqr_single_eig_aed_par(n,d,beta,u,v,k,np,bw,jobbw,iter,jobiter)
   complex(8), dimension(k) :: rho
   double precision :: eps, dlamch
   real(8):: z
-  real:: finish, start
   real(8), intent(inout):: bw
   character, intent(in):: jobbw
   character, intent(in):: jobiter

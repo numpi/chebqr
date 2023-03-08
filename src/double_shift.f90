@@ -216,12 +216,13 @@ subroutine cqr_fastqr6_ds_in(n,d,beta,u,v)
   real(8), dimension(2) :: l
   real(8) :: rho
   real(8), dimension(4,3) :: R
-  real(8), dimension(2,2) :: A
   integer :: i
   real(8) :: S, C, ss, cc, r1,i1,r2,i2
   real(8):: z,zz,z2,zz2
-  real(8):: eps = 2.22e-16
-
+  double precision :: dlamch
+  real(8):: eps
+  
+  eps =dlamch('e')
 
   if (n>3) then
     gamm(1)=(beta(1)-v(1)*u(2))+u(1)*v(2)
@@ -306,17 +307,12 @@ subroutine cqr_fastqr6_ds_in(n,d,beta,u,v)
       R(1,2)=gamm(n-1)
       R(2,2)=d(n)
 
-
       call drot(2, R(1,1), 4, R(2,1), 4, C, S)
       call drot(2, R(1,1), 1, R(1,2), 1, C, (S))
-
-
 
       d(n-1)=R(1,1)
       beta(n-1)=R(2,1)
       d(n)=R(2,2)
-
-
 
       call drot(1, u(n-1), 1, u(n), 1, C, S)
       call drot(1, v(n-1),1,v(n), 1, C, (S))
@@ -628,8 +624,8 @@ subroutine cqr_fastqr6_ds_in(n,d,beta,u,v)
     gamm(1)=(beta(1)-u(2)*v(1))+u(1)*v(2)
 
     call DLANV2(d(1),gamm(1),beta(1),d(2), r1,i1,r2,i2,C,S)
-    call drot(1, u(1), 1, u(2), 1, C, S) !forse qui va -S
-    call drot(1, v(1),1,v(2), 1, C, (S))	!e anche qui
+    call drot(1, u(1), 1, u(2), 1, C, S) ! forse qui va -S
+    call drot(1, v(1),1,v(2), 1, C, S)   ! e anche qui
 
   endif
 end subroutine cqr_fastqr6_ds_in
@@ -663,16 +659,14 @@ subroutine fastqr7_in(n,d,beta,u,v)
   real(8), dimension(n), intent(inout) :: d, u,v
   real(8), dimension(n-1), intent(inout) :: beta
   real(8), dimension(n-1) :: gamm
-  real(8), dimension(n-2) :: alph
-  real(8), dimension(2) :: l
   real(8) :: rho
   real(8), dimension(4,3) :: R
-  real(8), dimension(2,2) :: A
   integer :: i
-  real(8) :: S, C, ss, cc, r1,i1,r2,i2
-  real(8):: z,zz,z2,zz2
-  real(8):: eps = 2.22e-16
+  real(8) :: S, C, r1,i1,r2,i2
+  real(8):: z,z2
+  real(8):: eps, dlamch
 
+  eps = dlamch('e')
 
   if (n>2) then
     gamm(1)=(beta(1)-v(1)*u(2))+u(1)*v(2)
@@ -770,8 +764,8 @@ subroutine fastqr7_in(n,d,beta,u,v)
     gamm(1)=(beta(1)-u(2)*v(1))+u(1)*v(2)
 
     call DLANV2(d(1),gamm(1),beta(1),d(2), r1,i1,r2,i2,C,S)
-    call drot(1, u(1), 1, u(2), 1, C, S) !forse qui va -S
-    call drot(1, v(1),1,v(2), 1, C, (S))	!e anche qui
+    call drot(1, u(1), 1, u(2), 1, C, S)  ! forse qui va -S
+    call drot(1, v(1),1,v(2), 1, C, S)    ! e anche qui
 
   endif
 end subroutine fastqr7_in
